@@ -1,0 +1,866 @@
+openapi: 3.0.0
+info:
+  title: Persona Management API
+  description: |
+    API for managing personas and writing examples in the Social Media Campaign Builder p
+    This API allows users to create, manage, and organize personas with their voice characteristics,
+    writing habits, and example content for AI-powered content generation.
+  version: 1.0.0
+
+security:
+  - PersonaAuthorizer: []
+
+x-amazon-apigateway-request-validators:
+  Validate All:
+    validateRequestParameters: true
+    validateRequestBody: true
+x-amazon-apigateway-gateway-responses:
+  BAD_REQUEST_BODY:
+    statusCode: 400
+    responseTemplates:
+      application/json: '{ "message": "$context.error.validationErrorString" }'
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+  DEFAULT_4XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+  DEFAULT_5XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+
+tags:
+  - name: Personas
+    description: Persona management operations
+  - name: Writing Examples
+    description: Writing example management for personas
+
+paths:
+  /personas:
+    get:
+      summary: List personas
+      description: Retrieves a paginated list of personas for the authenticated tenant with optional filtering
+      tags:
+        - Personas
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of personas to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Search term to filter personas by name, role, company, or audience
+        - name: company
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+          description: Filter personas by company name
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+          description: Filter personas by role
+        - name: primaryAudience
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [executives, professionals, consumers, technical, creative]
+          description: Filter personas by primary audience
+      responses:
+        200:
+          description: List of personas retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personas:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Persona"
+                  nextToken:
+                    type: string
+                    description: Token for retrieving the next page of results
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListPersonasFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    post:
+      summary: Create a new persona
+      description: Creates a new persona with voice traits, writing habits, and opinion framework
+      tags:
+        - Personas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePersonaRequest"
+      responses:
+        201:
+          description: Persona created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Persona"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreatePersonaFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /personas/{personaId}:
+    parameters:
+      - name: personaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the persona
+    get:
+      summary: Get persona by ID
+      description: Retrieves a specific persona by its unique identifier
+      tags:
+        - Personas
+      responses:
+        200:
+          description: Persona retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Persona"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetPersonaFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    put:
+      summary: Update persona
+      description: Updates an existing persona with new information. All fields are optional.
+      tags:
+        - Personas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePersonaRequest"
+      responses:
+        200:
+          description: Persona updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Persona"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdatePersonaFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    delete:
+      summary: Delete persona
+      description: Soft deletes a persona by marking it as inactive. The persona data is preserved but hidden from listings.
+      tags:
+        - Personas
+      responses:
+        204:
+          description: Persona deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeletePersonaFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /personas/{personaId}/examples:
+    parameters:
+      - name: personaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the persona
+    get:
+      summary: List writing examples for a persona
+      description: Retrieves a paginated list of writing examples for a specific persona
+      tags:
+        - Writing Examples
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of examples to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
+      responses:
+        200:
+          description: Writing examples retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  examples:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WritingExample"
+                  nextToken:
+                    type: string
+                    description: Token for retrieving the next page of results
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListExamplesFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    post:
+      summary: Create a writing example
+      description: Creates a new writing example for a persona to help train AI style inference
+      tags:
+        - Writing Examples
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWritingExampleRequest"
+      responses:
+        201:
+          description: Writing example created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingExample"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateExampleFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /personas/{personaId}/examples/{exampleId}:
+    parameters:
+      - name: personaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the persona
+      - name: exampleId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the writing example
+    delete:
+      summary: Delete writing example
+      description: Soft deletes a writing example by removing its content while preserving metadata
+      tags:
+        - Writing Examples
+      responses:
+        204:
+          description: Writing example deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteExampleFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /personas/{personaId}/analyze:
+    parameters:
+      - name: personaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the persona
+    post:
+      summary: Start style analysis
+      description: Triggers AI-powered style analysis of the persona's writing examples to infer voice characteristics
+      tags:
+        - Personas
+      responses:
+        202:
+          description: Style analysis started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Style analysis started"
+                  analysisId:
+                    type: string
+                    description: Unique identifier for this analysis request
+                    example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${StartStyleAnalysisFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+components:
+  securitySchemes:
+    PersonaAuthorizer:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: custom
+
+  responses:
+    BadRequest:
+      description: Unable to process request. Likely due to improperly formatted request or validation errors.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: string
+                description: Message detailing what went wrong
+                example: "Validation error: name: String must contain at least 1 character(s)"
+    Unauthorized:
+      description: Authentication required or invalid credentials provided.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: string
+                description: Message explaining the authentication failure
+                example: "Unauthorized"
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: string
+                description: Message indicating the resource was not found
+                example: "Persona not found"
+    UnknownError:
+      description: An unexpected error occurred on the server.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: string
+                description: Generic error message
+                example: "Internal server error"
+
+  schemas:
+    Persona:
+      type: object
+      required:
+        - personaId
+        - tenantId
+        - name
+        - role
+        - company
+        - primaryAudience
+        - voiceTraits
+        - writingHabits
+        - opinions
+        - language
+        - ctaStyle
+        - createdAt
+        - updatedAt
+        - version
+        - isActive
+      properties:
+        personaId:
+          type: string
+          description: Unique identifier for the persona (ULID)
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        tenantId:
+          type: string
+          description: Tenant identifier for multi-tenancy
+          example: "tenant_123"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Full name of the persona
+          example: "Sarah Chen"
+        role:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Professional role or title
+          example: "Senior Product Manager"
+        company:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Company or organization name
+          example: "TechCorp Inc."
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for this persona's content
+          example: "professionals"
+        voiceTraits:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Key voice characteristics and traits
+          example: ["analytical", "empathetic", "data-driven", "collaborative"]
+        writingHabits:
+          $ref: "#/components/schemas/WritingHabits"
+        opinions:
+          $ref: "#/components/schemas/OpinionFramework"
+        language:
+          $ref: "#/components/schemas/LanguagePreferences"
+        ctaStyle:
+          $ref: "#/components/schemas/CTAStyle"
+        inferredStyle:
+          $ref: "#/components/schemas/InferredStyle"
+        createdAt:
+          type: string
+          format: date-time
+          description: When the persona was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the persona was last updated
+          example: "2024-01-20T14:45:00Z"
+        version:
+          type: integer
+          minimum: 1
+          description: Version number for optimistic locking
+          example: 3
+        isActive:
+          type: boolean
+          description: Whether the persona is active (not soft-deleted)
+          example: true
+
+    WritingHabits:
+      type: object
+      required:
+        - paragraphs
+        - questions
+        - emojis
+        - structure
+      properties:
+        paragraphs:
+          type: string
+          enum: [short, medium, long]
+          description: Preferred paragraph length
+          example: "medium"
+        questions:
+          type: string
+          enum: [frequent, occasional, rare]
+          description: Frequency of using questions in writing
+          example: "occasional"
+        emojis:
+          type: string
+          enum: [frequent, sparing, none]
+          description: Emoji usage pattern
+          example: "sparing"
+        structure:
+          type: string
+          enum: [prose, lists, mixed]
+          description: Preferred content structure
+          example: "mixed"
+
+    OpinionFramework:
+      type: object
+      required:
+        - strongBeliefs
+        - avoidsTopics
+      properties:
+        strongBeliefs:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 3
+          description: Core beliefs and strong opinions
+          example: ["Data-driven decisions lead to better outcomes", "User experience should always come first"]
+        avoidsTopics:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Topics or subjects to avoid discussing
+          example: ["politics", "controversial social issues"]
+
+    LanguagePreferences:
+      type: object
+      required:
+        - avoid
+        - prefer
+      properties:
+        avoid:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+          description: Words and phrases to avoid using
+          example: ["synergy", "paradigm shift", "disruptive"]
+        prefer:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+          description: Preferred words and phrases
+          example: ["collaborate", "impact", "meaningful"]
+
+    CTAStyle:
+      type: object
+      required:
+        - aggressiveness
+        - patterns
+      properties:
+        aggressiveness:
+          type: string
+          enum: [low, medium, high]
+          description: How aggressive or direct the call-to-action style should be
+          example: "medium"
+        patterns:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Preferred CTA patterns and phrases
+          example: ["Let's discuss this further", "I'd love to hear your thoughts"]
+
+    InferredStyle:
+      type: object
+      description: AI-inferred style characteristics based on writing examples
+      properties:
+        sentenceLengthPattern:
+          type: string
+          enum: [short, medium, long, varied]
+          description: Typical sentence length pattern
+          example: "varied"
+        paragraphRhythm:
+          type: string
+          enum: [concise, flowing, structured]
+          description: Overall paragraph rhythm and flow
+          example: "structured"
+        emojiFrequency:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Frequency of emoji usage (0-1 scale)
+          example: 0.2
+        metaphorUsage:
+          type: string
+          enum: [frequent, occasional, rare]
+          description: How often metaphors are used
+          example: "occasional"
+        overallTone:
+          type: string
+          description: Overall tone and personality in writing
+          example: "professional yet approachable"
+        anecdoteUsage:
+          type: string
+          enum: [frequent, occasional, rare]
+          description: Frequency of personal anecdotes or stories
+          example: "occasional"
+
+    WritingExample:
+      type: object
+      required:
+        - exampleId
+        - personaId
+        - tenantId
+        - platform
+        - intent
+        - text
+        - createdAt
+      properties:
+        exampleId:
+          type: string
+          description: Unique identifier for the writing example (ULID)
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        personaId:
+          type: string
+          description: ID of the persona this example belongs to
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        tenantId:
+          type: string
+          description: Tenant identifier for multi-tenancy
+          example: "tenant_123"
+        platform:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Platform where this content was originally posted
+          example: "LinkedIn"
+        intent:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Purpose or intent of the writing
+          example: "Share product launch announcement"
+        text:
+          type: string
+          minLength: 10
+          maxLength: 10000
+          description: The actual writing sample text
+          example: "Excited to share that our team has been working on something amazing..."
+        notes:
+          type: string
+          maxLength: 1000
+          description: Optional notes about the writing example
+          example: "This post performed really well, got 500+ likes"
+        analyzedAt:
+          type: string
+          format: date-time
+          description: When this example was analyzed by AI for style inference
+          example: "2024-01-16T09:15:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: When the example was added to the system
+          example: "2024-01-15T16:20:00Z"
+
+    CreatePersonaRequest:
+      type: object
+      required:
+        - name
+        - role
+        - company
+        - primaryAudience
+        - voiceTraits
+        - writingHabits
+        - opinions
+        - language
+        - ctaStyle
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Full name of the persona
+          example: "Sarah Chen"
+        role:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Professional role or title
+          example: "Senior Product Manager"
+        company:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Company or organization name
+          example: "TechCorp Inc."
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for this persona's content
+          example: "professionals"
+        voiceTraits:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Key voice characteristics and traits
+          example: ["analytical", "empathetic", "data-driven", "collaborative"]
+        writingHabits:
+          $ref: "#/components/schemas/WritingHabits"
+        opinions:
+          $ref: "#/components/schemas/OpinionFramework"
+        language:
+          $ref: "#/components/schemas/LanguagePreferences"
+        ctaStyle:
+          $ref: "#/components/schemas/CTAStyle"
+
+    UpdatePersonaRequest:
+      type: object
+      description: All fields are optional for updates
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Full name of the persona
+        role:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Professional role or title
+        company:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Company or organization name
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for this persona's content
+        voiceTraits:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Key voice characteristics and traits
+        writingHabits:
+          $ref: "#/components/schemas/WritingHabits"
+        opinions:
+          $ref: "#/components/schemas/OpinionFramework"
+        language:
+          $ref: "#/components/schemas/LanguagePreferences"
+        ctaStyle:
+          $ref: "#/components/schemas/CTAStyle"
+
+    CreateWritingExampleRequest:
+      type: object
+      required:
+        - platform
+        - intent
+        - text
+      properties:
+        platform:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Platform where this content was originally posted
+          example: "LinkedIn"
+        intent:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Purpose or intent of the writing
+          example: "Share product launch announcement"
+        text:
+          type: string
+          minLength: 10
+          maxLength: 10000
+          description: The actual writing sample text
+          example: "Excited to share that our team has been working on something amazing..."
+        notes:
+          type: string
+          maxLength: 1000
+          description: Optional notes about the writing example
+          example: "This post performed really well, got 500+ likes"

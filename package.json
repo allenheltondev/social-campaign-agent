@@ -1,0 +1,37 @@
+{
+  "name": "persona-management-api",
+  "version": "1.0.0",
+  "description": "REST API for managing personas and writing examples in the Social Media Campaign Builder",
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .mjs",
+    "sam:build": "sam build",
+    "sam:deploy": "sam deploy --guided",
+    "sam:local": "sam local start-api"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.30.0",
+    "@strands-agents/sdk": "^0.1.2",
+    "aws-jwt-verify": "^5.1.1",
+    "jsonwebtoken": "^9.0.3",
+    "ulid": "^2.3.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.0.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.948.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-eventbridge": "^3.948.0",
+    "@aws-sdk/client-lambda": "^3.0.0",
+    "@aws-sdk/util-dynamodb": "^3.0.0",
+    "aws-sdk-client-mock": "^4.0.0",
+    "eslint": "^8.0.0",
+    "fast-check": "^3.15.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,555 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Persona Management API - REST API for managing personas and writing examples
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    CodeUri: functions
+    Architectures:
+      - arm64
+    Timeout: 15
+    MemorySize: 1024
+    Environment:
+      Variables:
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  AuthorizerArn:
+    Type: String
+    Default: ""
+    Description: Optional ARN of existing Lambda authorizer. If not provided, internal authorizer will be created.
+
+Conditions:
+  CreateInternalAuthorizer: !Equals [!Ref AuthorizerArn, ""]
+
+Metadata:
+  esbuild-properties: &esbuild-properties
+    Format: esm
+    Minify: true
+    OutExtension:
+      - .js=.mjs
+    Target: es2020
+    Sourcemap: false
+    EntryPoints:
+      - index.mjs
+    Banner:
+      - js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+    External:
+      - '@aws-sdk/client-bedrock-runtime'
+      - '@strands-agents/sdk'
+    Loader: []
+
+Resources:
+  PersonaTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Condition: CreateInternalAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - auth/authorizer.mjs
+    Properties:
+      Handler: auth/authorizer.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:GetUser
+              Resource: "*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          USER_POOL_ID: !Ref CognitoUserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+
+  CampaignApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Auth:
+        DefaultAuthorizer: Authorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+         Authorizer:
+          FunctionPayloadType: REQUEST
+          FunctionArn: !If [CreateInternalAuthorizer, !GetAtt AuthorizerFunction.Arn, !Ref AuthorizerArn ]
+          Identity:
+            Headers:
+              - Authorization
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: ./openapi.yaml
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Delete
+    Properties:
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: tenantId
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      UserPoolTags:
+        Project: CampaignAgent
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub campaign-agent-${Environment}
+      UserPoolId: !Ref CognitoUserPool
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_AUTH
+      AuthSessionValidity: 3
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 24
+      IdTokenValidity: 24
+      RefreshTokenValidity: 30
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - "http://localhost:5173"
+      LogoutURLs:
+        - "http://localhost:5173"
+      SupportedIdentityProviders:
+        - COGNITO
+
+  CreatePersonaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/create-persona.mjs
+    Properties:
+      Handler: persona/create-persona.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        CreatePersona:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas
+            Method: POST
+
+  GetPersonaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/get-persona.mjs
+    Properties:
+      Handler: persona/get-persona.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        GetPersona:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}
+            Method: GET
+
+  UpdatePersonaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/update-persona.mjs
+    Properties:
+      Handler: persona/update-persona.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        UpdatePersona:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}
+            Method: PUT
+
+  DeletePersonaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/delete-persona.mjs
+    Properties:
+      Handler: persona/delete-persona.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        DeletePersona:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}
+            Method: DELETE
+
+  ListPersonasFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/list-personas.mjs
+    Properties:
+      Handler: persona/list-personas.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ListPersonas:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas
+            Method: GET
+
+  CreateExampleFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/examples/create-example.mjs
+    Properties:
+      Handler: persona/examples/create-example.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource:
+                - !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        CreateExample:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}/examples
+            Method: POST
+
+  ListExamplesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/examples/list-examples.mjs
+    Properties:
+      Handler: persona/examples/list-examples.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        GetExamples:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}/examples
+            Method: GET
+
+  DeleteExampleFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/examples/delete-example.mjs
+    Properties:
+      Handler: persona/examples/delete-example.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        DeleteExample:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}/examples/{exampleId}
+            Method: DELETE
+
+  StartStyleAnalysisFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/start-style-analysis.mjs
+    Properties:
+      Handler: persona/start-style-analysis.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        TriggerAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /personas/{personaId}/analyze
+            Method: POST
+
+  StyleInferenceFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - agents/persona-inference.mjs
+    Properties:
+      Handler: agents/persona-inference.handler
+      Timeout: 60
+      MemorySize: 2048
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action:
+                - events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        StyleAnalysisRequest:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["persona-management-api"]
+              detail-type: ["Style Analysis Requested"]
+
+  StyleAnalysisCompleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - persona/events/style-analysis-complete.mjs
+    Properties:
+      Handler: persona/events/style-analysis-complete.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        StyleAnalysisCompletion:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["persona-management-api"]
+              detail-type: ["Style Analysis Completed"]
+
+Outputs:
+  PersonaApiUrl:
+    Description: API Gateway endpoint URL for Persona Management API
+    Value: !Sub 'https://${CampaignApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+
