@@ -807,6 +807,178 @@ Resources:
             Path: /brands/{brandId}/assets/{assetId}
             Method: DELETE
 
+  CreateCampaignFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/create-campaign.mjs
+    Properties:
+      Handler: campaign/create-campaign.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        CreateCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns
+            Method: POST
+
+  GetCampaignFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/get-campaign.mjs
+    Properties:
+      Handler: campaign/get-campaign.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        GetCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}
+            Method: GET
+
+  ListCampaignPostsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/list-posts.mjs
+    Properties:
+      Handler: campaign/list-posts.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ListPosts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}/posts
+            Method: GET
+
+  CampaignPlannerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - agents/campaign-planner.mjs
+    Properties:
+      Handler: agents/campaign-planner.handler
+      Timeout: 300
+      MemorySize: 2048
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:BatchWriteItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        CampaignCreated:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["campaign-api"]
+              detail-type: ["Campaign Created"]
+
+  ContentGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - agents/content-generator.mjs
+    Properties:
+      Handler: agents/content-generator.handler
+      Timeout: 120
+      MemorySize: 2048
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        SocialPostCreated:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["campaign-planner"]
+              detail-type: ["Social Post Created"]
+
 Outputs:
   PersonaApiUrl:
     Description: API Gateway endpoint URL for Persona Management API

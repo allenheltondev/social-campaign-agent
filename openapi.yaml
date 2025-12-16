@@ -43,6 +43,8 @@ tags:
     description: Brand management operations
   - name: Brand Assets
     description: Brand asset management operations
+  - name: Campaigns
+    description: Social media campaign management operations
 
 paths:
   /personas:
@@ -742,6 +744,120 @@ paths:
       x-amazon-apigateway-integration:
         uri:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /campaigns:
+    post:
+      summary: Create campaign
+      description: Creates a new social media campaign and initiates async content generation workflow
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignRequest"
+      responses:
+        202:
+          description: Campaign creation initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique campaign identifier
+                    example: "campaign_01HQRS9TPXJ4K3M2N1P0Q9R8S7"
+                  status:
+                    type: string
+                    description: Campaign status
+                    example: "planning"
+                  message:
+                    type: string
+                    description: Status message
+                    example: "Campaign creation initiated"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateCampaignFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /campaigns/{campaignId}:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+    get:
+      summary: Get campaign
+      description: Retrieves campaign details including status and plan summary
+      tags:
+        - Campaigns
+      responses:
+        200:
+          description: Campaign retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResponse"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetCampaignFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /campaigns/{campaignId}/posts:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+    get:
+      summary: List campaign posts
+      description: Retrieves all social media posts for a campaign
+      tags:
+        - Campaigns
+      responses:
+        200:
+          description: Posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SocialPostResponse"
+                  count:
+                    type: integer
+                    description: Number of posts returned
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignPostsFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
 
@@ -1682,3 +1798,195 @@ components:
           maxItems: 10
           description: Tags for asset organization
           example: ["logo", "primary", "digital"]
+
+    CreateCampaignRequest:
+      type: object
+      required:
+        - description
+        - personaIds
+        - platforms
+        - duration
+      properties:
+        description:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          description: Campaign description and goals
+          example: "Launch our new AI-powered analytics product with focus on enterprise use cases"
+        personaIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Array of persona IDs to participate in the campaign
+          example: ["persona_01HQRS9TPXJ4K3M2N1", "persona_01HQRS9TPXJ4K3M2N2"]
+        platforms:
+          type: array
+          items:
+            type: string
+            enum: [twitter, linkedin, instagram, facebook]
+          minItems: 1
+          description: Target social media platforms
+          example: ["twitter", "linkedin"]
+        brandId:
+          type: string
+          description: Optional brand ID for brand-specific guidelines
+          example: "brand_01HQRS9TPXJ4K3M2N1P0"
+        duration:
+          type: object
+          description: Campaign duration specification
+          properties:
+            startDate:
+              type: string
+              format: date-time
+              description: Campaign start date (ISO 8601)
+              example: "2024-01-15T00:00:00Z"
+            endDate:
+              type: string
+              format: date-time
+              description: Campaign end date (ISO 8601)
+              example: "2024-02-15T00:00:00Z"
+            numberOfDays:
+              type: integer
+              minimum: 1
+              maximum: 90
+              description: Number of days for campaign (alternative to date range)
+              example: 30
+
+    CampaignResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique campaign identifier
+          example: "campaign_01HQRS9TPXJ4K3M2N1P0Q9R8S7"
+        description:
+          type: string
+          description: Campaign description
+        personaIds:
+          type: array
+          items:
+            type: string
+          description: Persona IDs in this campaign
+        platforms:
+          type: array
+          items:
+            type: string
+            enum: [twitter, linkedin, instagram, facebook]
+          description: Target platforms
+        brandId:
+          type: string
+          description: Associated brand ID
+        duration:
+          type: object
+          properties:
+            startDate:
+              type: string
+              format: date-time
+            endDate:
+              type: string
+              format: date-time
+            numberOfDays:
+              type: integer
+        status:
+          type: string
+          enum: [planning, generating, completed, failed]
+          description: Current campaign status
+        planSummary:
+          type: object
+          description: Summary of campaign plan (available after planning)
+          properties:
+            totalPosts:
+              type: integer
+              description: Total number of posts planned
+            postsPerPlatform:
+              type: object
+              additionalProperties:
+                type: integer
+              description: Post count per platform
+            postsPerPersona:
+              type: object
+              additionalProperties:
+                type: integer
+              description: Post count per persona
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    SocialPostResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique post identifier
+          example: "post_01HQRS9TPXJ4K3M2N1P0Q9R8S7"
+        campaignId:
+          type: string
+          description: Parent campaign ID
+        personaId:
+          type: string
+          description: Assigned persona ID
+        platform:
+          type: string
+          enum: [twitter, linkedin, instagram, facebook]
+          description: Target platform
+        scheduledDate:
+          type: string
+          format: date-time
+          description: Scheduled publication date
+        topic:
+          type: string
+          description: Post topic
+        assetRequirements:
+          type: object
+          description: Required visual assets
+          properties:
+            imageRequired:
+              type: boolean
+            imageDescription:
+              type: string
+            videoRequired:
+              type: boolean
+            videoDescription:
+              type: string
+        content:
+          type: object
+          description: Generated content (available after generation)
+          properties:
+            text:
+              type: string
+              description: Post text
+            hashtags:
+              type: array
+              items:
+                type: string
+              description: Hashtags for the post
+            mentions:
+              type: array
+              items:
+                type: string
+              description: Account mentions
+            generatedAt:
+              type: string
+              format: date-time
+        status:
+          type: string
+          enum: [planned, generating, completed, failed]
+          description: Post generation status
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
