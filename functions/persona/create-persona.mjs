@@ -42,7 +42,7 @@ export const handler = async (event) => {
       ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
     }));
 
-    return formatResponse(201, persona);
+    return formatResponse(201, { id: personaId });
   } catch (error) {
     console.error('Create persona error:', error);
 

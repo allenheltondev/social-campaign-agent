@@ -7,6 +7,14 @@ import {
   CreateWritingExampleRequestSchema,
   QueryPersonasRequestSchema
 } from '../schemas/persona.mjs';
+import {
+  BrandSchema,
+  BrandAssetSchema,
+  CreateBrandRequestSchema,
+  UpdateBrandRequestSchema,
+  CreateBrandAssetRequestSchema,
+  QueryBrandsRequestSchema
+} from '../schemas/brand.mjs';
 
 /**
  * Enhanced validation utilities for request/response processing
@@ -153,6 +161,67 @@ export const validatePersonaEntity = (persona) => {
  */
 export const validateExampleEntity = (example) => {
   return WritingExampleSchema.parse(example);
+};
+
+/**
+ * Validate brand creation request
+ * @param {string} body - Request body
+ * @returns {Object} Validated brand data
+ */
+export const validateCreateBrandRequest = (body) => {
+  return validateRequestBody(body, CreateBrandRequestSchema);
+};
+
+/**
+ * Validate brand update request
+ * @param {string} body - Request body
+ * @returns {Object} Validated update data
+ */
+export const validateUpdateBrandRequest = (body) => {
+  const data = validateRequestBody(body, UpdateBrandRequestSchema);
+
+  // Ensure at least one field is being updated
+  if (Object.keys(data).length === 0) {
+    throw new ValidationError('Update request must contain at least one field to update', []);
+  }
+
+  return data;
+};
+
+/**
+ * Validate brand asset creation request
+ * @param {string} body - Request body
+ * @returns {Object} Validated asset data
+ */
+export const validateCreateBrandAssetRequest = (body) => {
+  return validateRequestBody(body, CreateBrandAssetRequestSchema);
+};
+
+/**
+ * Validate brand query parameters
+ * @param {Object} queryParams - Query parameters
+ * @returns {Object} Validated query parameters
+ */
+export const validateBrandQuery = (queryParams) => {
+  return validateQueryParams(queryParams, QueryBrandsRequestSchema);
+};
+
+/**
+ * Validate complete brand entity (for database operations)
+ * @param {Object} brand - Brand object
+ * @returns {Object} Validated brand
+ */
+export const validateBrandEntity = (brand) => {
+  return BrandSchema.parse(brand);
+};
+
+/**
+ * Validate complete brand asset entity (for database operations)
+ * @param {Object} asset - Brand asset object
+ * @returns {Object} Validated asset
+ */
+export const validateBrandAssetEntity = (asset) => {
+  return BrandAssetSchema.parse(asset);
 };
 
 /**

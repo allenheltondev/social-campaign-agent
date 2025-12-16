@@ -39,6 +39,10 @@ tags:
     description: Persona management operations
   - name: Writing Examples
     description: Writing example management for personas
+  - name: Brands
+    description: Brand management operations
+  - name: Brand Assets
+    description: Brand asset management operations
 
 paths:
   /personas:
@@ -408,6 +412,339 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+  /brands:
+    get:
+      summary: List brands
+      description: Retrieves a paginated list of brands for the authenticated tenant with optional filtering and search
+      tags:
+        - Brands
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of brands to return
+        - name: lastEvaluatedKey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Search term to filter brands by name, ethos, or core values
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, pending]
+          description: Filter brands by status
+        - name: primaryAudience
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [executives, professionals, consumers, technical, creative]
+          description: Filter brands by primary audience
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort order for results by creation date
+      responses:
+        200:
+          description: List of brands retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brands:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Brand"
+                  lastEvaluatedKey:
+                    type: string
+                    description: Token for retrieving the next page of results
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListBrandsFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    post:
+      summary: Create a new brand
+      description: Creates a new brand with identity, guidelines, and asset management
+      tags:
+        - Brands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBrandRequest"
+      responses:
+        201:
+          description: Brand created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Brand"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateBrandFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /brands/{brandId}:
+    parameters:
+      - name: brandId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the brand
+    get:
+      summary: Get brand by ID
+      description: Retrieves a specific brand by its unique identifier
+      tags:
+        - Brands
+      responses:
+        200:
+          description: Brand retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Brand"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetBrandFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    put:
+      summary: Update brand
+      description: Updates an existing brand with new information. All fields are optional.
+      tags:
+        - Brands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBrandRequest"
+      responses:
+        200:
+          description: Brand updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Brand"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateBrandFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    delete:
+      summary: Delete brand
+      description: Soft deletes a brand by marking it as inactive. The brand data is preserved but hidden from listings.
+      tags:
+        - Brands
+      responses:
+        204:
+          description: Brand deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteBrandFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /brands/{brandId}/assets:
+    parameters:
+      - name: brandId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the brand
+    get:
+      summary: List brand assets
+      description: Retrieves a paginated list of assets for a specific brand
+      tags:
+        - Brand Assets
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of assets to return
+        - name: lastEvaluatedKey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
+        - name: assetType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [logo, image, document, video, other]
+          description: Filter assets by type
+      responses:
+        200:
+          description: Brand assets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BrandAsset"
+                  lastEvaluatedKey:
+                    type: string
+                    description: Token for retrieving the next page of results
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListAssetsFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    post:
+      summary: Upload brand asset
+      description: Uploads a new asset for a brand to S3 and creates metadata record
+      tags:
+        - Brand Assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadAssetRequest"
+      responses:
+        201:
+          description: Asset uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandAsset"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /brands/{brandId}/assets/{assetId}:
+    parameters:
+      - name: brandId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the brand
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the asset
+    delete:
+      summary: Delete brand asset
+      description: Deletes an asset from S3 and removes its metadata record
+      tags:
+        - Brand Assets
+      responses:
+        204:
+          description: Asset deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
 components:
   securitySchemes:
     PersonaAuthorizer:
@@ -422,55 +759,170 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            required:
-              - message
-            properties:
-              message:
-                type: string
-                description: Message detailing what went wrong
-                example: "Validation error: name: String must contain at least 1 character(s)"
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            validation_error:
+              summary: Validation error example
+              value:
+                message: "Validation error: name: String must contain at least 1 character(s)"
+                errorCode: "BRAND_VALIDATION_ERROR"
+                errorId: "1703123456789-abc123def"
+                details:
+                  field: "name"
+                  constraint: "minLength"
+            missing_parameter:
+              summary: Missing required parameter
+              value:
+                message: "Missing brandId parameter"
+                errorCode: "BRAND_VALIDATION_ERROR"
+                errorId: "1703123456789-def456ghi"
+                details: {}
     Unauthorized:
       description: Authentication required or invalid credentials provided.
       content:
         application/json:
           schema:
-            type: object
-            required:
-              - message
-            properties:
-              message:
-                type: string
-                description: Message explaining the authentication failure
-                example: "Unauthorized"
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "Unauthorized"
+            errorCode: "BRAND_UNAUTHORIZED"
+            errorId: "1703123456789-ghi789jkl"
+            details: {}
+    Forbidden:
+      description: Access to the requested resource is forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "Access denied to brand resource"
+            errorCode: "BRAND_TENANT_ISOLATION_VIOLATION"
+            errorId: "1703123456789-jkl012mno"
+            details:
+              resource: "brand"
+              action: "read"
     NotFound:
       description: The requested resource was not found
       content:
         application/json:
           schema:
-            type: object
-            required:
-              - message
-            properties:
-              message:
-                type: string
-                description: Message indicating the resource was not found
-                example: "Persona not found"
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            brand_not_found:
+              summary: Brand not found
+              value:
+                message: "Brand not found"
+                errorCode: "BRAND_NOT_FOUND"
+                errorId: "1703123456789-mno345pqr"
+                details: {}
+            asset_not_found:
+              summary: Asset not found
+              value:
+                message: "Asset not found"
+                errorCode: "BRAND_ASSET_NOT_FOUND"
+                errorId: "1703123456789-pqr678stu"
+                details: {}
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "Brand name already exists"
+            errorCode: "BRAND_CONFLICT"
+            errorId: "1703123456789-stu901vwx"
+            details:
+              conflictField: "name"
+              conflictValue: "existing-brand-name"
+    UnprocessableEntity:
+      description: The request was well-formed but contains semantic errors.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_file_type:
+              summary: Invalid file type for asset upload
+              value:
+                message: "Invalid file type. Only images and documents are allowed."
+                errorCode: "BRAND_INVALID_FILE_TYPE"
+                errorId: "1703123456789-vwx234yza"
+                details:
+                  allowedTypes: ["image/jpeg", "image/png", "application/pdf"]
+                  providedType: "application/executable"
+            file_too_large:
+              summary: File size exceeds limit
+              value:
+                message: "File size exceeds maximum limit of 10MB"
+                errorCode: "BRAND_FILE_TOO_LARGE"
+                errorId: "1703123456789-yza567bcd"
+                details:
+                  maxSize: 10485760
+                  actualSize: 15728640
     UnknownError:
       description: An unexpected error occurred on the server.
       content:
         application/json:
           schema:
-            type: object
-            required:
-              - message
-            properties:
-              message:
-                type: string
-                description: Generic error message
-                example: "Internal server error"
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internal_error:
+              summary: Generic internal server error
+              value:
+                message: "Internal server error"
+                errorCode: "BRAND_INTERNAL_ERROR"
+                errorId: "1703123456789-bcd890efg"
+                details: {}
+            asset_upload_failed:
+              summary: Asset upload failure
+              value:
+                message: "Asset upload failed"
+                errorCode: "BRAND_ASSET_UPLOAD_FAILED"
+                errorId: "1703123456789-efg123hij"
+                details:
+                  s3Error: "Access denied to S3 bucket"
 
   schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - message
+        - errorCode
+        - errorId
+      properties:
+        message:
+          type: string
+          description: Human-readable error message describing what went wrong
+          example: "Brand not found"
+        errorCode:
+          type: string
+          description: Machine-readable error code for programmatic handling
+          enum:
+            - BRAND_VALIDATION_ERROR
+            - BRAND_NOT_FOUND
+            - BRAND_UNAUTHORIZED
+            - BRAND_CONFLICT
+            - BRAND_ASSET_NOT_FOUND
+            - BRAND_ASSET_UPLOAD_FAILED
+            - BRAND_INVALID_FILE_TYPE
+            - BRAND_FILE_TOO_LARGE
+            - BRAND_TENANT_ISOLATION_VIOLATION
+            - BRAND_INTERNAL_ERROR
+          example: "BRAND_NOT_FOUND"
+        errorId:
+          type: string
+          description: Unique identifier for this specific error occurrence for debugging and support
+          pattern: "^[0-9]{13}-[a-z0-9]{9}$"
+          example: "1703123456789-abc123def"
+        details:
+          type: object
+          description: Additional context-specific error details
+          additionalProperties: true
+          example:
+            field: "name"
+            constraint: "minLength"
+
     Persona:
       type: object
       required:
@@ -864,3 +1316,369 @@ components:
           maxLength: 1000
           description: Optional notes about the writing example
           example: "This post performed really well, got 500+ likes"
+
+    Brand:
+      type: object
+      required:
+        - brandId
+        - tenantId
+        - name
+        - ethos
+        - coreValues
+        - primaryAudience
+        - voiceGuidelines
+        - contentStandards
+        - visualIdentity
+        - status
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        brandId:
+          type: string
+          description: Unique identifier for the brand (ULID)
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        tenantId:
+          type: string
+          description: Tenant identifier for multi-tenancy
+          example: "tenant_123"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Brand name
+          example: "TechCorp"
+        ethos:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Brand ethos and core philosophy
+          example: "Empowering businesses through innovative technology solutions"
+        coreValues:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Core brand values
+          example: ["Innovation", "Integrity", "Customer Success", "Excellence"]
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for brand content
+          example: "professionals"
+        voiceGuidelines:
+          $ref: "#/components/schemas/VoiceGuidelines"
+        contentStandards:
+          $ref: "#/components/schemas/ContentStandards"
+        visualIdentity:
+          $ref: "#/components/schemas/VisualIdentity"
+        approvalThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Threshold for content approval (0-1 scale)
+          example: 0.8
+        status:
+          type: string
+          enum: [active, inactive, pending]
+          description: Current brand status
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+          description: When the brand was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the brand was last updated
+          example: "2024-01-20T14:45:00Z"
+        version:
+          type: integer
+          minimum: 1
+          description: Version number for optimistic locking
+          example: 2
+
+    VoiceGuidelines:
+      type: object
+      required:
+        - tone
+        - style
+        - messaging
+      properties:
+        tone:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Brand tone characteristics
+          example: ["professional", "approachable", "innovative", "trustworthy"]
+        style:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Writing style guidelines
+          example: ["clear", "concise", "data-driven", "solution-focused"]
+        messaging:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Key messaging themes
+          example: ["technology leadership", "customer success", "innovation"]
+
+    ContentStandards:
+      type: object
+      required:
+        - qualityRequirements
+        - restrictions
+      properties:
+        qualityRequirements:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Content quality requirements
+          example: ["fact-checked", "original", "engaging", "actionable"]
+        restrictions:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+          description: Content restrictions and guidelines
+          example: ["no controversial topics", "avoid jargon", "include data sources"]
+
+    VisualIdentity:
+      type: object
+      required:
+        - colorPalette
+        - typography
+        - imagery
+      properties:
+        colorPalette:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Brand color palette
+          example: ["#1E3A8A", "#3B82F6", "#EFF6FF", "#1F2937"]
+        typography:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 5
+          description: Typography guidelines
+          example: ["Inter", "Roboto", "sans-serif"]
+        imagery:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Imagery style guidelines
+          example: ["modern", "clean", "professional", "diverse"]
+
+    BrandAsset:
+      type: object
+      required:
+        - assetId
+        - brandId
+        - tenantId
+        - fileName
+        - fileSize
+        - mimeType
+        - assetType
+        - s3Key
+        - uploadedAt
+      properties:
+        assetId:
+          type: string
+          description: Unique identifier for the asset (ULID)
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        brandId:
+          type: string
+          description: ID of the brand this asset belongs to
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        tenantId:
+          type: string
+          description: Tenant identifier for multi-tenancy
+          example: "tenant_123"
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Original file name
+          example: "logo-primary.png"
+        fileSize:
+          type: integer
+          minimum: 1
+          description: File size in bytes
+          example: 245760
+        mimeType:
+          type: string
+          description: MIME type of the file
+          example: "image/png"
+        assetType:
+          type: string
+          enum: [logo, image, document, video, other]
+          description: Type of asset
+          example: "logo"
+        s3Key:
+          type: string
+          description: S3 object key for the asset
+          example: "tenant_123/brands/01ARZ3NDEKTSV4RRFFQ69G5FAV/assets/01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the asset
+          example: "Primary brand logo for digital use"
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Tags for asset organization
+          example: ["logo", "primary", "digital"]
+        uploadedAt:
+          type: string
+          format: date-time
+          description: When the asset was uploaded
+          example: "2024-01-15T16:20:00Z"
+
+    CreateBrandRequest:
+      type: object
+      required:
+        - name
+        - ethos
+        - coreValues
+        - primaryAudience
+        - voiceGuidelines
+        - contentStandards
+        - visualIdentity
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Brand name
+          example: "TechCorp"
+        ethos:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Brand ethos and core philosophy
+          example: "Empowering businesses through innovative technology solutions"
+        coreValues:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Core brand values
+          example: ["Innovation", "Integrity", "Customer Success", "Excellence"]
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for brand content
+          example: "professionals"
+        voiceGuidelines:
+          $ref: "#/components/schemas/VoiceGuidelines"
+        contentStandards:
+          $ref: "#/components/schemas/ContentStandards"
+        visualIdentity:
+          $ref: "#/components/schemas/VisualIdentity"
+        approvalThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Threshold for content approval (0-1 scale)
+          example: 0.8
+
+    UpdateBrandRequest:
+      type: object
+      description: All fields are optional for updates
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Brand name
+        ethos:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Brand ethos and core philosophy
+        coreValues:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Core brand values
+        primaryAudience:
+          type: string
+          enum: [executives, professionals, consumers, technical, creative]
+          description: Primary target audience for brand content
+        voiceGuidelines:
+          $ref: "#/components/schemas/VoiceGuidelines"
+        contentStandards:
+          $ref: "#/components/schemas/ContentStandards"
+        visualIdentity:
+          $ref: "#/components/schemas/VisualIdentity"
+        approvalThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Threshold for content approval (0-1 scale)
+        status:
+          type: string
+          enum: [active, inactive, pending]
+          description: Current brand status
+
+    UploadAssetRequest:
+      type: object
+      required:
+        - fileName
+        - fileData
+        - mimeType
+        - assetType
+      properties:
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Original file name
+          example: "logo-primary.png"
+        fileData:
+          type: string
+          format: byte
+          description: Base64 encoded file data
+        mimeType:
+          type: string
+          description: MIME type of the file
+          example: "image/png"
+        assetType:
+          type: string
+          enum: [logo, image, document, video, other]
+          description: Type of asset
+          example: "logo"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the asset
+          example: "Primary brand logo for digital use"
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Tags for asset organization
+          example: ["logo", "primary", "digital"]

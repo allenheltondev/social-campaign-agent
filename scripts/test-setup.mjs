@@ -129,7 +129,7 @@ async function loginUser() {
     ClientId: CONFIG.clientId,
     AuthParameters: {
       USERNAME: CONFIG.username,
-      PASSWORD: CONFIG.password || CONFIG.tempPassword
+      PASSWORD: CONFIG.newPassword || CONFIG.password || CONFIG.tempPassword
     }
   });
 

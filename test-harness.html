@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Campaign Builder - API Tess</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+
+        .config {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .config input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            background: white;
+            border-radius: 8px 8px 0 0;
+            overflow-x: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: #f8fafc;
+        }
+
+        .tab.active {
+            border-bottom-color: #2563eb;
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        .tab-content {
+            background: white;
+            padding: 20px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .endpoint {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+
+        .endpoint h3 {
+            margin-bottom: 15px;
+            color: #374151;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .method {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.GET { background: #10b981; }
+        .method.POST { background: #3b82f6; }
+        .method.PUT { background: #f59e0b; }
+        .method.DELETE { background: #ef4444; }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            height: 120px;
+            resize: vertical;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1d4ed8;
+        }
+
+        .btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .response {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .response.success {
+            background: #ecfdf5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .response.error {
+            background: #fef2f2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        .file-input {
+            border: 2px dashed #d1d5db;
+            padding: 20px;
+            text-align: center;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .file-input:hover {
+            border-color: #2563eb;
+        }
+
+        .file-input.dragover {
+            border-color: #2563eb;
+            background: #eff6ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Social Media Campaign Builder - API Test Harness</h1>
+            <div class="config">
+                <input type="text" id="apiUrl" placeholder="API Base URL" value="{{API_URL}}">
+                <input type="text" id="authToken" placeholder="Authorization Token" value="{{ACCESS_TOKEN}}">
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('personas')">Personas</div>
+            <div class="tab" onclick="showTab('examples')">Writing Examples</div>
+            <div class="tab" onclick="showTab('analysis')">Style Analysis</div>
+            <div class="tab" onclick="showTab('brands')">Brands</div>
+            <div class="tab" onclick="showTab('assets')">Brand Assets</div>
+        </div>
+
+        <!-- Personas Tab -->
+        <div id="personas" class="tab-content active">
+            <div class="endpoint">
+                <h3><span class="method POST">POST</span> Create Persona</h3>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="createPersonaName" placeholder="John Doe">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Role</label>
+                        <input type="text" id="createPersonaRole" placeholder="Marketing Director">
+                    </div>
+                    <div class="form-group">
+                        <label>Company</label>
+                        <input type="text" id="createPersonaCompany" placeholder="Acme Corp">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Primary Audience</label>
+                    <select id="createPersonaPrimaryAudience">
+                        <option value="business_professionals">Business Professionals</option>
+                        <option value="entrepreneurs">Entrepreneurs</option>
+                        <option value="developers">Developers</option>
+                        <option value="marketers">Marketers</option>
+                        <option value="general_public">General Public</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Content Guardrails (JSON)</label>
+                    <textarea id="createPersonaGuardrails" placeholder='{"avoidWords": ["never", "always"], "avoidTopics": ["politics"], "avoidClaims": ["guaranteed results"]}'></textarea>
+                </div>
+                <button class="btn" onclick="createPersona()">Create Persona</button>
+                <div id="createPersonaResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> List Personas</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Limit</label>
+                        <input type="number" id="listPersonasLimit" placeholder="25" value="25">
+                    </div>
+                    <div class="form-group">
+                        <label>Next Token</label>
+                        <input type="text" id="listPersonasNextToken" placeholder="Optional pagination token">
+                    </div>
+                </div>
+                <button class="btn" onclick="listPersonas()">List Personas</button>
+                <div id="listPersonasResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> Get Persona</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="getPersonaId" placeholder="persona-id">
+                </div>
+                <button class="btn" onclick="getPersona()">Get Persona</button>
+                <div id="getPersonaResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method PUT">PUT</span> Update Persona</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="updatePersonaId" placeholder="persona-id">
+                </div>
+                <div class="form-group">
+                    <label>Update Data (JSON)</label>
+                    <textarea id="updatePersonaData" placeholder='{"name": "Updated Name", "role": "New Role"}'></textarea>
+                </div>
+                <button class="btn" onclick="updatePersona()">Update Persona</button>
+                <div id="updatePersonaResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method DELETE">DELETE</span> Delete Persona</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="deletePersonaId" placeholder="persona-id">
+                </div>
+                <button class="btn" onclick="deletePersona()">Delete Persona</button>
+                <div id="deletePersonaResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Writing Examples Tab -->
+        <div id="examples" class="tab-content">
+            <div class="endpoint">
+                <h3><span class="method POST">POST</span> Create Writing Example</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="createExamplePersonaId" placeholder="persona-id">
+                </div>
+                <div class="form-group">
+                    <label>Content</label>
+                    <textarea id="createExampleContent" placeholder="Example writing content..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Platform</label>
+                    <select id="createExamplePlatform">
+                        <option value="twitter">Twitter</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="blog">Blog</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notes (Optional)</label>
+                    <textarea id="createExampleNotes" placeholder="Additional notes about this example..."></textarea>
+                </div>
+                <button class="btn" onclick="createExample()">Create Example</button>
+                <div id="createExampleResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> List Writing Examples</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="listExamplesPersonaId" placeholder="persona-id">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Limit</label>
+                        <input type="number" id="listExamplesLimit" placeholder="25" value="25">
+                    </div>
+                    <div class="form-group">
+                        <label>Next Token</label>
+                        <input type="text" id="listExamplesNextToken" placeholder="Optional pagination token">
+                    </div>
+                </div>
+                <button class="btn" onclick="listExamples()">List Examples</button>
+                <div id="listExamplesResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method DELETE">DELETE</span> Delete Writing Example</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Persona ID</label>
+                        <input type="text" id="deleteExamplePersonaId" placeholder="persona-id">
+                    </div>
+                    <div class="form-group">
+                        <label>Example ID</label>
+                        <input type="text" id="deleteExampleId" placeholder="example-id">
+                    </div>
+                </div>
+                <button class="btn" onclick="deleteExample()">Delete Example</button>
+                <div id="deleteExampleResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Style Analysis Tab -->
+        <div id="analysis" class="tab-content">
+            <div class="endpoint">
+                <h3><span class="method POST">POST</span> Start Style Analysis</h3>
+                <div class="form-group">
+                    <label>Persona ID</label>
+                    <input type="text" id="analyzePersonaId" placeholder="persona-id">
+                </div>
+                <button class="btn" onclick="startStyleAnalysis()">Start Analysis</button>
+                <div id="startAnalysisResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Brands Tab -->
+        <div id="brands" class="tab-content">
+            <div class="endpoint">
+                <h3><span class="method POST">POST</span> Create Brand</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" id="createBrandName" placeholder="Acme Corporation">
+                    </div>
+                    <div class="form-group">
+                        <label>Industry</label>
+                        <input type="text" id="createBrandIndustry" placeholder="Technology">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="createBrandDescription" placeholder="Brand description..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Primary Audience</label>
+                    <select id="createBrandPrimaryAudience">
+                        <option value="business_professionals">Business Professionals</option>
+                        <option value="entrepreneurs">Entrepreneurs</option>
+                        <option value="developers">Developers</option>
+                        <option value="marketers">Marketers</option>
+                        <option value="general_public">General Public</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="createBrand()">Create Brand</button>
+                <div id="createBrandResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> List Brands</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Limit</label>
+                        <input type="number" id="listBrandsLimit" placeholder="25" value="25">
+                    </div>
+                    <div class="form-group">
+                        <label>Search</label>
+                        <input type="text" id="listBrandsSearch" placeholder="Search brands...">
+                    </div>
+                </div>
+                <button class="btn" onclick="listBrands()">List Brands</button>
+                <div id="listBrandsResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> Get Brand</h3>
+                <div class="form-group">
+                    <label>Brand ID</label>
+                    <input type="text" id="getBrandId" placeholder="brand-id">
+                </div>
+                <button class="btn" onclick="getBrand()">Get Brand</button>
+                <div id="getBrandResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method PUT">PUT</span> Update Brand</h3>
+                <div class="form-group">
+                    <label>Brand ID</label>
+                    <input type="text" id="updateBrandId" placeholder="brand-id">
+                </div>
+                <div class="form-group">
+                    <label>Update Data (JSON)</label>
+                    <textarea id="updateBrandData" placeholder='{"name": "Updated Brand Name", "description": "New description"}'></textarea>
+                </div>
+                <button class="btn" onclick="updateBrand()">Update Brand</button>
+                <div id="updateBrandResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method DELETE">DELETE</span> Delete Brand</h3>
+                <div class="form-group">
+                    <label>Brand ID</label>
+                    <input type="text" id="deleteBrandId" placeholder="brand-id">
+                </div>
+                <button class="btn" onclick="deleteBrand()">Delete Brand</button>
+                <div id="deleteBrandResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Brand Assets Tab -->
+        <div id="assets" class="tab-content">
+            <div class="endpoint">
+                <h3><span class="method POST">POST</span> Upload Brand Asset</h3>
+                <div class="form-group">
+                    <label>Brand ID</label>
+                    <input type="text" id="uploadAssetBrandId" placeholder="brand-id">
+                </div>
+                <div class="form-group">
+                    <label>Asset File</label>
+                    <div class="file-input" onclick="document.getElementById('assetFile').click()">
+                        <input type="file" id="assetFile" style="display: none;" onchange="handleFileSelect(this)">
+                        <div id="fileInfo">Click to select file or drag and drop</div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Asset Type</label>
+                        <select id="uploadAssetType">
+                            <option value="logo">Logo</option>
+                            <option value="image">Image</option>
+                            <option value="document">Document</option>
+                            <option value="video">Video</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <input type="text" id="uploadAssetCategory" placeholder="marketing">
+                    </div>
+                </div>
+                <button class="btn" onclick="uploadAsset()">Upload Asset</button>
+                <div id="uploadAssetResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method GET">GET</span> List Brand Assets</h3>
+                <div class="form-group">
+                    <label>Brand ID</label>
+                    <input type="text" id="listAssetsBrandId" placeholder="brand-id">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type Filter</label>
+                        <select id="listAssetsType">
+                            <option value="">All Types</option>
+                            <option value="logo">Logo</option>
+                            <option value="image">Image</option>
+                            <option value="document">Document</option>
+                            <option value="video">Video</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Category Filter</label>
+                        <input type="text" id="listAssetsCategory" placeholder="Optional category filter">
+                    </div>
+                </div>
+                <button class="btn" onclick="listAssets()">List Assets</button>
+                <div id="listAssetsResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method DELETE">DELETE</span> Delete Brand Asset</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Brand ID</label>
+                        <input type="text" id="deleteAssetBrandId" placeholder="brand-id">
+                    </div>
+                    <div class="form-group">
+                        <label>Asset ID</label>
+                        <input type="text" id="deleteAssetId" placeholder="asset-id">
+                    </div>
+                </div>
+                <button class="btn" onclick="deleteAsset()">Delete Asset</button>
+                <div id="deleteAssetResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
+        }
+
+        function getAuthHeaders() {
+            const token = document.getElementById('authToken').value;
+            return {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+        }
+
+        function showResponse(elementId, response, isError = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response ${isError ? 'error' : 'success'}`;
+            element.textContent = JSON.stringify(response, null, 2);
+        }
+
+        function showLoading(elementId) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = 'response loading';
+            element.textContent = 'Loading...';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const headers = getAuthHeaders();
+
+            const options = {
+                method,
+                headers
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
+                }
+
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Persona Functions
+        async function createPersona() {
+            showLoading('createPersonaResponse');
+
+            try {
+                const guardrails = document.getElementById('createPersonaGuardrails').value;
+                const body = {
+                    name: document.getElementById('createPersonaName').value,
+                    role: document.getElementById('createPersonaRole').value,
+                    company: document.getElementById('createPersonaCompany').value,
+                    primaryAudience: document.getElementById('createPersonaPrimaryAudience').value,
+                    contentGuardrails: guardrails ? JSON.parse(guardrails) : {}
+                };
+
+                const response = await makeRequest('POST', `${getApiUrl()}/personas`, body);
+                showResponse('createPersonaResponse', response);
+            } catch (error) {
+                showResponse('createPersonaResponse', { error: error.message }, true);
+            }
+        }
+
+        async function listPersonas() {
+            showLoading('listPersonasResponse');
+
+            try {
+                const limit = document.getElementById('listPersonasLimit').value;
+                const nextToken = document.getElementById('listPersonasNextToken').value;
+
+                let url = `${getApiUrl()}/personas?limit=${limit}`;
+                if (nextToken) url += `&nextToken=${encodeURIComponent(nextToken)}`;
+
+                const response = await makeRequest('GET', url);
+                showResponse('listPersonasResponse', response);
+            } catch (error) {
+                showResponse('listPersonasResponse', { error: error.message }, true);
+            }
+        }
+
+        async function getPersona() {
+            showLoading('getPersonaResponse');
+
+            try {
+                const personaId = document.getElementById('getPersonaId').value;
+                const response = await makeRequest('GET', `${getApiUrl()}/personas/${personaId}`);
+                showResponse('getPersonaResponse', response);
+            } catch (error) {
+                showResponse('getPersonaResponse', { error: error.message }, true);
+            }
+        }
+
+        async function updatePersona() {
+            showLoading('updatePersonaResponse');
+
+            try {
+                const personaId = document.getElementById('updatePersonaId').value;
+                const updateData = JSON.parse(document.getElementById('updatePersonaData').value);
+
+                const response = await makeRequest('PUT', `${getApiUrl()}/personas/${personaId}`, updateData);
+                showResponse('updatePersonaResponse', response);
+            } catch (error) {
+                showResponse('updatePersonaResponse', { error: error.message }, true);
+            }
+        }
+
+        async function deletePersona() {
+            showLoading('deletePersonaResponse');
+
+            try {
+                const personaId = document.getElementById('deletePersonaId').value;
+                const response = await makeRequest('DELETE', `${getApiUrl()}/personas/${personaId}`);
+                showResponse('deletePersonaResponse', response || { message: 'Deleted successfully' });
+            } catch (error) {
+                showResponse('deletePersonaResponse', { error: error.message }, true);
+            }
+        }
+
+        // Writing Examples Functions
+        async function createExample() {
+            showLoading('createExampleResponse');
+
+            try {
+                const personaId = document.getElementById('createExamplePersonaId').value;
+                const body = {
+                    content: document.getElementById('createExampleContent').value,
+                    platform: document.getElementById('createExamplePlatform').value,
+                    notes: document.getElementById('createExampleNotes').value || undefined
+                };
+
+                const response = await makeRequest('POST', `${getApiUrl()}/personas/${personaId}/examples`, body);
+                showResponse('createExampleResponse', response);
+            } catch (error) {
+                showResponse('createExampleResponse', { error: error.message }, true);
+            }
+        }
+
+        async function listExamples() {
+            showLoading('listExamplesResponse');
+
+            try {
+                const personaId = document.getElementById('listExamplesPersonaId').value;
+                const limit = document.getElementById('listExamplesLimit').value;
+                const nextToken = document.getElementById('listExamplesNextToken').value;
+
+                let url = `${getApiUrl()}/personas/${personaId}/examples?limit=${limit}`;
+                if (nextToken) url += `&nextToken=${encodeURIComponent(nextToken)}`;
+
+                const response = await makeRequest('GET', url);
+                showResponse('listExamplesResponse', response);
+            } catch (error) {
+                showResponse('listExamplesResponse', { error: error.message }, true);
+            }
+        }
+
+        async function deleteExample() {
+            showLoading('deleteExampleResponse');
+
+            try {
+                const personaId = document.getElementById('deleteExamplePersonaId').value;
+                const exampleId = document.getElementById('deleteExampleId').value;
+
+                const response = await makeRequest('DELETE', `${getApiUrl()}/personas/${personaId}/examples/${exampleId}`);
+                showResponse('deleteExampleResponse', response || { message: 'Deleted successfully' });
+            } catch (error) {
+                showResponse('deleteExampleResponse', { error: error.message }, true);
+            }
+        }
+
+        // Style Analysis Functions
+        async function startStyleAnalysis() {
+            showLoading('startAnalysisResponse');
+
+            try {
+                const personaId = document.getElementById('analyzePersonaId').value;
+                const response = await makeRequest('POST', `${getApiUrl()}/personas/${personaId}/analyze`);
+                showResponse('startAnalysisResponse', response);
+            } catch (error) {
+                showResponse('startAnalysisResponse', { error: error.message }, true);
+            }
+        }
+
+        // Brand Functions
+        async function createBrand() {
+            showLoading('createBrandResponse');
+
+            try {
+                const body = {
+                    name: document.getElementById('createBrandName').value,
+                    industry: document.getElementById('createBrandIndustry').value,
+                    description: document.getElementById('createBrandDescription').value,
+                    primaryAudience: document.getElementById('createBrandPrimaryAudience').value
+                };
+
+                const response = await makeRequest('POST', `${getApiUrl()}/brands`, body);
+                showResponse('createBrandResponse', response);
+            } catch (error) {
+                showResponse('createBrandResponse', { error: error.message }, true);
+            }
+        }
+
+        async function listBrands() {
+            showLoading('listBrandsResponse');
+
+            try {
+                const limit = document.getElementById('listBrandsLimit').value;
+                const search = document.getElementById('listBrandsSearch').value;
+
+                let url = `${getApiUrl()}/brands?limit=${limit}`;
+                if (search) url += `&search=${encodeURIComponent(search)}`;
+
+                const response = await makeRequest('GET', url);
+                showResponse('listBrandsResponse', response);
+            } catch (error) {
+                showResponse('listBrandsResponse', { error: error.message }, true);
+            }
+        }
+
+        async function getBrand() {
+            showLoading('getBrandResponse');
+
+            try {
+                const brandId = document.getElementById('getBrandId').value;
+                const response = await makeRequest('GET', `${getApiUrl()}/brands/${brandId}`);
+                showResponse('getBrandResponse', response);
+            } catch (error) {
+                showResponse('getBrandResponse', { error: error.message }, true);
+            }
+        }
+
+        async function updateBrand() {
+            showLoading('updateBrandResponse');
+
+            try {
+                const brandId = document.getElementById('updateBrandId').value;
+                const updateData = JSON.parse(document.getElementById('updateBrandData').value);
+
+                const response = await makeRequest('PUT', `${getApiUrl()}/brands/${brandId}`, updateData);
+                showResponse('updateBrandResponse', response);
+            } catch (error) {
+                showResponse('updateBrandResponse', { error: error.message }, true);
+            }
+        }
+
+        async function deleteBrand() {
+            showLoading('deleteBrandResponse');
+
+            try {
+                const brandId = document.getElementById('deleteBrandId').value;
+                const response = await makeRequest('DELETE', `${getApiUrl()}/brands/${brandId}`);
+                showResponse('deleteBrandResponse', response || { message: 'Deleted successfully' });
+            } catch (error) {
+                showResponse('deleteBrandResponse', { error: error.message }, true);
+            }
+        }
+
+        // Brand Assets Functions
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (file) {
+                document.getElementById('fileInfo').textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            }
+        }
+
+        async function uploadAsset() {
+            showLoading('uploadAssetResponse');
+
+            try {
+                const brandId = document.getElementById('uploadAssetBrandId').value;
+                const file = document.getElementById('assetFile').files[0];
+                const assetType = document.getElementById('uploadAssetType').value;
+                const category = document.getElementById('uploadAssetCategory').value;
+
+                if (!file) {
+                    throw new Error('Please select a file');
+                }
+
+                // Convert file to base64
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    const base64Data = e.target.result.split(',')[1];
+
+                    const body = {
+                        fileName: file.name,
+                        fileType: file.type,
+                        fileData: base64Data,
+                        assetType: assetType,
+                        category: category
+                    };
+
+                    try {
+                        const response = await makeRequest('POST', `${getApiUrl()}/brands/${brandId}/assets`, body);
+                        showResponse('uploadAssetResponse', response);
+                    } catch (error) {
+                        showResponse('uploadAssetResponse', { error: error.message }, true);
+                    }
+                };
+                reader.readAsDataURL(file);
+            } catch (error) {
+                showResponse('uploadAssetResponse', { error: error.message }, true);
+            }
+        }
+
+        async function listAssets() {
+            showLoading('listAssetsResponse');
+
+            try {
+                const brandId = document.getElementById('listAssetsBrandId').value;
+                const type = document.getElementById('listAssetsType').value;
+                const category = document.getElementById('listAssetsCategory').value;
+
+                let url = `${getApiUrl()}/brands/${brandId}/assets`;
+                const params = [];
+                if (type) params.push(`type=${encodeURIComponent(type)}`);
+                if (category) params.push(`category=${encodeURIComponent(category)}`);
+                if (params.length > 0) url += '?' + params.join('&');
+
+                const response = await makeRequest('GET', url);
+                showResponse('listAssetsResponse', response);
+            } catch (error) {
+                showResponse('listAssetsResponse', { error: error.message }, true);
+            }
+        }
+
+        async function deleteAsset() {
+            showLoading('deleteAssetResponse');
+
+            try {
+                const brandId = document.getElementById('deleteAssetBrandId').value;
+                const assetId = document.getElementById('deleteAssetId').value;
+
+                const response = await makeRequest('DELETE', `${getApiUrl()}/brands/${brandId}/assets/${assetId}`);
+                showResponse('deleteAssetResponse', response || { message: 'Deleted successfully' });
+            } catch (error) {
+                showResponse('deleteAssetResponse', { error: error.message }, true);
+            }
+        }
+
+        // File drag and drop
+        const fileInput = document.querySelector('.file-input');
+        fileInput.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileInput.classList.add('dragover');
+        });
+
+        fileInput.addEventListener('dragleave', () => {
+            fileInput.classList.remove('dragover');
+        });
+
+        fileInput.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInput.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('assetFile').files = files;
+                handleFileSelect(document.getElementById('assetFile'));
+            }
+        });
+    </script>
+</body>
+</html>

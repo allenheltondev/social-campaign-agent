@@ -4,8 +4,8 @@ import {
   PersonaSchema,
   CreatePersonaRequestSchema,
   generatePersonaId
-} from './persona.mjs';
-import { validatePersonaEntity } from '../utils/validation.mjs';
+} from '../../schemas/persona.mjs';
+import { validatePersonaEntity } from '../../utils/validation.mjs';
 
 /**
  * **Feature: persona-management-api, Property 1: Persona data round-trip consistency**

@@ -4,7 +4,7 @@ import {
   WritingExampleSchema,
   CreatePersonaRequestSchema,
   validateRequestBody
-} from './persona.mjs';
+} from '../../schemas/persona.mjs';
 
 describe('Persona Schemas', () => {
   describe('CreatePersonaRequestSchema', () => {

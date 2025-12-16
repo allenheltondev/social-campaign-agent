@@ -135,7 +135,7 @@ async function emitAnalysisEvent(tenantId, personaId, status, details = {}) {
 
   try {
     await eventBridge.send(new PutEventsCommand(eventParams));
-    console.log(`EventBridge event emitted for persona ${personaId}, status: ${status}`);
+
   } catch (error) {
     console.error('Failed to emit EventBridge event:', error);
     // Don't throw - event emission failure shouldn't fail the analysis
@@ -314,9 +314,6 @@ After your analysis, use the save_style_analysis tool to save the results for pe
  */
 export const handler = async (event) => {
   try {
-    console.log('Style analysis request received:', JSON.stringify(event, null, 2));
-
-    // Extract details from EventBridge event
     const detail = event.detail;
     const { personaId, tenantId, requestId } = detail;
 
@@ -328,12 +325,6 @@ export const handler = async (event) => {
     const result = await agent.analyzeAndSaveStyle({
       personaId,
       tenantId,
-      requestId
-    });
-
-    console.log('Style analysis completed:', {
-      personaId,
-      success: result.success,
       requestId
     });
 
