@@ -1,48 +1,37 @@
+import { DynamoDBClient, GetItemCommand, BatchGetItemCommand } from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
 
-// Core persona schema that defines both validation and type
+const ddb = new DynamoDBClient();
+
 export const PersonaSchema = z.object({
-  // Identity
   personaId: z.string(),
   tenantId: z.string(),
   name: z.string().min(1).max(100),
   role: z.string().min(1).max(100),
   company: z.string().min(1).max(100),
   primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
-
-  // Voice Traits
   voiceTraits: z.array(z.string()).min(1).max(10),
-
-  // Writing Habits
   writingHabits: z.object({
     paragraphs: z.enum(['short', 'medium', 'long']),
     questions: z.enum(['frequent', 'occasional', 'rare']),
     emojis: z.enum(['frequent', 'sparing', 'none']),
     structure: z.enum(['prose', 'lists', 'mixed'])
   }),
-
-  // Opinions Framework
   opinions: z.object({
     strongBeliefs: z.array(z.string()).min(1).max(3),
     avoidsTopics: z.array(z.string()).max(10)
   }),
-
-  // Language Preferences
   language: z.object({
     avoid: z.array(z.string()).max(20),
     prefer: z.array(z.string()).max(20)
   }),
-
-  // CTA Style
   ctaStyle: z.object({
     aggressiveness: z.enum(['low', 'medium', 'high']),
     patterns: z.array(z.string()).max(10)
   }),
-
-  // Inferred Style (optional, populated by AI)
   inferredStyle: z.object({
-    // Measurable sentence/paragraph patterns
     sentenceLengthPattern: z.object({
       avgWordsPerSentence: z.number(),
       variance: z.enum(['low', 'medium', 'high']),
@@ -50,30 +39,16 @@ export const PersonaSchema = z.object({
     }),
     structurePreference: z.enum(['prose', 'lists', 'mixed']),
     pacing: z.enum(['punchy', 'even', 'meandering']),
-
-    // Separated emoji and expressiveness
     emojiFrequency: z.number().min(0).max(1),
     expressivenessMarkers: z.enum(['low', 'medium', 'high']),
-
-    // Split metaphor types
     analogyUsage: z.enum(['frequent', 'occasional', 'rare']),
     imageryMetaphorUsage: z.enum(['frequent', 'occasional', 'rare']),
-
-    // Controlled vocabulary tone + free text
     toneTags: z.array(z.enum(['direct', 'warm', 'candid', 'technical', 'playful', 'skeptical', 'optimistic', 'pragmatic', 'story-driven', 'educational'])).min(1).max(4),
     overallTone: z.string().optional(),
-
-    // Stance and hedging
     assertiveness: z.enum(['high', 'medium', 'low']),
     hedgingStyle: z.enum(['rare', 'some', 'frequent']),
-
-    // Hook style
     hookStyle: z.enum(['question', 'contrarian', 'story', 'data', 'straight-to-point', 'mixed']),
-
-    // Anecdote usage (keeping from original)
     anecdoteUsage: z.enum(['frequent', 'occasional', 'rare']),
-
-    // Diagnostic confidence
     confidence: z.object({
       overall: z.number().min(0).max(1),
       coverage: z.object({
@@ -92,19 +67,14 @@ export const PersonaSchema = z.object({
       })
     })
   }).optional(),
-
-  // Analysis Status
   analysisStatus: z.enum(['pending', 'processing', 'success', 'failure']).optional(),
   lastAnalysisAt: z.string().optional(),
-
-  // Metadata
   createdAt: z.string(),
   updatedAt: z.string(),
   version: z.number().int().min(1),
   isActive: z.boolean()
 });
 
-// Writing example schema
 export const WritingExampleSchema = z.object({
   exampleId: z.string(),
   personaId: z.string(),
@@ -117,7 +87,6 @@ export const WritingExampleSchema = z.object({
   createdAt: z.string()
 });
 
-// Request schemas for API validation
 export const CreatePersonaRequestSchema = PersonaSchema.omit({
   personaId: true,
   tenantId: true,
@@ -147,7 +116,6 @@ export const QueryPersonasRequestSchema = z.object({
   primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']).optional()
 });
 
-// Utility function to validate request body
 export const validateRequestBody = (schema, body) => {
   try {
     const parsed = JSON.parse(body);
@@ -160,7 +128,6 @@ export const validateRequestBody = (schema, body) => {
   }
 };
 
-// Utility function to validate query parameters
 export const validateQueryParams = (schema, params) => {
   try {
     return schema.parse(params);
@@ -172,7 +139,6 @@ export const validateQueryParams = (schema, params) => {
   }
 };
 
-// Simple ID generation utilities
 export const generatePersonaId = () => {
   return `persona_${ulid()}`;
 };
@@ -180,3 +146,138 @@ export const generatePersonaId = () => {
 export const generateExampleId = () => {
   return `example_${ulid()}`;
 };
+
+export class Persona {
+  static async findById(tenantId, personaId) {
+    const response = await ddb.send(new GetItemCommand({
+      TableName: process.env.TABLE_NAME,
+      Key: marshall({
+        pk: `${tenantId}#${personaId}`,
+        sk: 'persona'
+      })
+    }));
+
+    if (!response.Item) {
+      return null;
+    }
+
+    const rawPersona = unmarshall(response.Item);
+    return this.transformFromDynamoDB(rawPersona);
+  }
+
+  static async findByIds(tenantId, personaIds) {
+    if (!personaIds || personaIds.length === 0) {
+      return [];
+    }
+
+    const batchSize = 100;
+    const personas = [];
+
+    for (let i = 0; i < personaIds.length; i += batchSize) {
+      const batch = personaIds.slice(i, i + batchSize);
+      const keys = batch.map(personaId => ({
+        pk: { S: `${tenantId}#${personaId}` },
+        sk: { S: 'persona' }
+      }));
+
+      const response = await ddb.send(new BatchGetItemCommand({
+        RequestItems: {
+          [process.env.TABLE_NAME]: {
+            Keys: keys
+          }
+        }
+      }));
+
+      const batchPersonas = response.Responses[process.env.TABLE_NAME]?.map(item => {
+        const rawPersona = unmarshall(item);
+        return this.transformFromDynamoDB(rawPersona);
+      }) || [];
+
+      personas.push(...batchPersonas);
+    }
+
+    const missingPersonas = personaIds.filter(id =>
+      !personas.find(p => p.personaId === id)
+    );
+
+    if (missingPersonas.length > 0) {
+      throw new Error(`Personas not found: ${missingPersonas.join(', ')}`);
+    }
+
+    return personas;
+  }
+
+  static transformFromDynamoDB(rawPersona) {
+    const cleanPersona = { ...rawPersona };
+
+    delete cleanPersona.pk;
+    delete cleanPersona.sk;
+    delete cleanPersona.GSI1PK;
+    delete cleanPersona.GSI1SK;
+    delete cleanPersona.GSI2PK;
+    delete cleanPersona.GSI2SK;
+
+    return PersonaSchema.parse(cleanPersona);
+  }
+
+  static transformToDynamoDB(tenantId, persona) {
+    const now = new Date().toISOString();
+
+    return {
+      pk: `${tenantId}#${persona.personaId}`,
+      sk: 'persona',
+      GSI1PK: tenantId,
+      GSI1SK: `PERSONA#${now}`,
+      GSI2PK: `${tenantId}#${persona.company}`,
+      GSI2SK: `PERSONA#${persona.role}#${now}`,
+      ...persona
+    };
+  }
+
+  static enrichForCampaign(persona) {
+    return {
+      personaId: persona.personaId,
+      name: persona.name,
+      role: persona.role,
+      company: persona.company,
+      primaryAudience: persona.primaryAudience,
+      voiceTraits: persona.voiceTraits,
+      writingHabits: persona.writingHabits,
+      opinions: persona.opinions,
+      language: persona.language,
+      ctaStyle: persona.ctaStyle,
+      inferredStyle: persona.inferredStyle,
+      hardRestrictions: {
+        avoidsTopics: persona.opinions?.avoidsTopics || [],
+        languageAvoid: persona.language?.avoid || [],
+        ctaLimitations: persona.ctaStyle?.aggressiveness === 'low'
+      },
+      platformPreferences: {
+        twitter: { maxLength: 280, preferHashtags: true },
+        linkedin: { maxLength: 3000, preferProfessional: true },
+        instagram: { maxLength: 2200, requireVisuals: true },
+        facebook: { maxLength: 63206, allowLongForm: true }
+      }
+    };
+  }
+
+  static mergeEffectiveRestrictions(persona, campaignRestrictions = {}, brandRestrictions = {}) {
+    const enrichedPersona = this.enrichForCampaign(persona);
+
+    return {
+      ...enrichedPersona,
+      effectiveRestrictions: {
+        avoidsTopics: [
+          ...(enrichedPersona.hardRestrictions?.avoidsTopics || []),
+          ...(campaignRestrictions.campaignAvoidTopics || []),
+          ...(brandRestrictions.avoidTopics || [])
+        ],
+        languageAvoid: [
+          ...(enrichedPersona.hardRestrictions?.languageAvoid || []),
+          ...(brandRestrictions.avoidPhrases || [])
+        ],
+        ctaLimitations: enrichedPersona.hardRestrictions?.ctaLimitations || false
+      }
+    };
+  }
+}

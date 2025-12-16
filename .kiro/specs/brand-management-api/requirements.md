@@ -81,4 +81,52 @@ The Brand Management API provides comprehensive functionality for creating, stor
 4. WHEN displaying results THEN the Brand Management API SHALL return summary information suitable for selection interfaces
 5. WHEN accessing brand details THEN the Brand Management API SHALL provide complete brand profiles including all guidelines and assets
 
+### Requirement 6
+
+**User Story:** As a social media manager, I want to configure platform-specific brand guidelines, so that content generation follows appropriate norms and expectations for each social media platform.
+
+#### Acceptance Criteria
+
+1. WHEN configuring platform guidelines THEN the Brand Management API SHALL accept enabled platforms and platform-specific defaults
+2. WHEN setting platform defaults THEN the Brand Management API SHALL validate asset requirements, link policies, emoji usage, hashtag policies, and cadence preferences for each platform
+3. WHEN defining platform behavior THEN the Brand Management API SHALL store platform-specific content length preferences and formatting guidelines
+4. WHEN updating platform settings THEN the Brand Management API SHALL maintain consistency across platform configurations
+5. WHEN retrieving platform guidelines THEN the Brand Management API SHALL provide complete platform-specific configuration for content generation
+
+### Requirement 7
+
+**User Story:** As a brand compliance officer, I want to define structured claims and compliance policies, so that generated content adheres to legal and regulatory requirements.
+
+#### Acceptance Criteria
+
+1. WHEN setting claims policy THEN the Brand Management API SHALL accept structured compliance rules including guarantee restrictions and performance number policies
+2. WHEN configuring source requirements THEN the Brand Management API SHALL enforce source citation requirements for statistical claims
+3. WHEN defining competitor policies THEN the Brand Management API SHALL specify competitor mention guidelines and restrictions
+4. WHEN updating compliance rules THEN the Brand Management API SHALL maintain audit trails for regulatory compliance
+5. WHEN validating content THEN the Brand Management API SHALL provide compliance checking capabilities against defined policies
+
+### Requirement 8
+
+**User Story:** As a content creator, I want to access brand CTA libraries and messaging pillars, so that I can incorporate consistent calls-to-action and messaging themes in generated content.
+
+#### Acceptance Criteria
+
+1. WHEN defining CTA library THEN the Brand Management API SHALL store standard call-to-action templates with types, text, and default URLs
+2. WHEN configuring messaging pillars THEN the Brand Management API SHALL accept pillar definitions with optional weights for content distribution
+3. WHEN updating CTA templates THEN the Brand Management API SHALL maintain version history and usage tracking
+4. WHEN retrieving messaging guidance THEN the Brand Management API SHALL provide complete pillar and CTA information for content generation
+5. WHEN validating CTAs THEN the Brand Management API SHALL ensure CTA format consistency and URL validation
+
+### Requirement 9
+
+**User Story:** As a marketing operations manager, I want to configure approval policies and audience profiles, so that content generation follows appropriate review processes and targets the right audiences.
+
+#### Acceptance Criteria
+
+1. WHEN setting approval policy THEN the Brand Management API SHALL accept threshold values and approval modes for automated content review
+2. WHEN configuring audience profiles THEN the Brand Management API SHALL store primary audience, target segments, and excluded audiences
+3. WHEN defining review processes THEN the Brand Management API SHALL specify automatic approval criteria and manual review requirements
+4. WHEN updating approval settings THEN the Brand Management API SHALL maintain consistency with content quality standards
+5. WHEN processing content THEN the Brand Management API SHALL provide approval guidance based on configured policies
+
 

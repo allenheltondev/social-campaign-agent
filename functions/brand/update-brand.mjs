@@ -1,6 +1,6 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { UpdateBrandRequestSchema, validateRequestBody } from '../../schemas/brand.mjs';
+import { UpdateBrandRequestSchema, validateRequestBody } from '../../models/brand.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
 

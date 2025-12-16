@@ -1,7 +1,8 @@
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { CreateCampaignRequestSchema, validateRequestBody, generateCampaignId } from '../../schemas/campaign.mjs';
+import { CreateCampaignRequestSchema, validateRequestBody, generateCampaignId } from '../../models/campaign.mjs';
+import { Campaign } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 
 const ddb = new DynamoDBClient();
@@ -21,28 +22,35 @@ export const handler = async (event) => {
     const now = new Date().toISOString();
 
     const campaign = {
-      campaignId,
+      id: campaignId,
       tenantId,
-      description: requestData.description,
-      personaIds: requestData.personaIds,
-      platforms: requestData.platforms,
-      brandId: requestData.brandId,
-      duration: requestData.duration,
+      brandId: requestData.brandId || null,
+      name: requestData.name,
+      brief: requestData.brief,
+      participants: {
+        ...requestData.participants,
+        distribution: requestData.participants.distribution || { mode: 'balanced' }
+      },
+      schedule: requestData.schedule,
+      cadenceOverrides: requestData.cadenceOverrides || null,
+      messaging: requestData.messaging || null,
+      assetOverrides: requestData.assetOverrides || null,
       status: 'planning',
+      planSummary: null,
+      lastError: null,
+      metadata: requestData.metadata || { source: 'api' },
       createdAt: now,
       updatedAt: now,
-      version: 1
+      completedAt: null,
+      version: 1,
+      planVersion: null
     };
+
+    const dynamoItem = Campaign.transformToDynamoDB(tenantId, campaign);
 
     await ddb.send(new PutItemCommand({
       TableName: process.env.TABLE_NAME,
-      Item: marshall({
-        pk: `${tenantId}#${campaignId}`,
-        sk: 'campaign',
-        GSI1PK: tenantId,
-        GSI1SK: `campaign#${now}`,
-        ...campaign
-      }),
+      Item: marshall(dynamoItem),
       ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
     }));
 
@@ -54,18 +62,14 @@ export const handler = async (event) => {
           Detail: JSON.stringify({
             campaignId,
             tenantId,
-            personaIds: requestData.personaIds,
-            platforms: requestData.platforms,
-            brandId: requestData.brandId,
-            duration: requestData.duration,
-            description: requestData.description
+            campaign: campaign
           }),
           EventBusName: process.env.EVENT_BUS_NAME || 'default'
         }
       ]
     }));
 
-    return formatResponse(202, { 
+    return formatResponse(202, {
       id: campaignId,
       status: 'planning',
       message: 'Campaign creation initiated'

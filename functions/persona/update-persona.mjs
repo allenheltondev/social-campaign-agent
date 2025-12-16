@@ -1,6 +1,6 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { UpdatePersonaRequestSchema, validateRequestBody } from '../../schemas/persona.mjs';
+import { UpdatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 
 const ddb = new DynamoDBClient();

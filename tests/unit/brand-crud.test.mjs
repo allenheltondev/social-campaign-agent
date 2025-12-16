@@ -4,7 +4,7 @@ import {
   UpdateBrandRequestSchema,
   validateRequestBody,
   generateBrandId
-} from '../../schemas/brand.mjs';
+} from '../../models/brand.mjs';
 
 // Mock environment variables
 process.env.TABLE_NAME = 'test-table';

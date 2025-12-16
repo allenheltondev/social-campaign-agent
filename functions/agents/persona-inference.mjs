@@ -1,8 +1,9 @@
-import { Agent, tool } from '@strands-agents/sdk';
+import { Agent } from '@strands-agents/sdk';
 import { z } from 'zod';
-import { DynamoDBClient, QueryCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { saveStyleAnalysisTool } from './tools.mjs';
 
 const ddb = new DynamoDBClient();
 const eventBridge = new EventBridgeClient();
@@ -10,102 +11,6 @@ const eventBridge = new EventBridgeClient();
 const lambdaEventSchema = z.object({
   personaId: z.string().min(1, 'Persona ID is required'),
   tenantId: z.string().min(1, 'Tenant ID is required')
-});
-
-const styleInferenceOutputSchema = z.object({
-  // Measurable sentence/paragraph patterns
-  sentenceLengthPattern: z.object({
-    avgWordsPerSentence: z.number(),
-    variance: z.enum(['low', 'medium', 'high']),
-    classification: z.enum(['short', 'medium', 'long', 'varied'])
-  }),
-  structurePreference: z.enum(['prose', 'lists', 'mixed']),
-  pacing: z.enum(['punchy', 'even', 'meandering']),
-
-  // Separated emoji and expressiveness
-  emojiFrequency: z.number().min(0).max(1),
-  expressivenessMarkers: z.enum(['low', 'medium', 'high']),
-
-  // Split metaphor types
-  analogyUsage: z.enum(['frequent', 'occasional', 'rare']),
-  imageryMetaphorUsage: z.enum(['frequent', 'occasional', 'rare']),
-
-  // Controlled vocabulary tone + free text
-  toneTags: z.array(z.enum(['direct', 'warm', 'candid', 'technical', 'playful', 'skeptical', 'optimistic', 'pragmatic', 'story-driven', 'educational'])).min(1).max(4),
-  overallTone: z.string().optional(),
-
-  // Stance and hedging
-  assertiveness: z.enum(['high', 'medium', 'low']),
-  hedgingStyle: z.enum(['rare', 'some', 'frequent']),
-
-  // Hook style
-  hookStyle: z.enum(['question', 'contrarian', 'story', 'data', 'straight-to-point', 'mixed']),
-
-  // Anecdote usage
-  anecdoteUsage: z.enum(['frequent', 'occasional', 'rare']),
-
-  // Diagnostic confidence
-  confidence: z.object({
-    overall: z.number().min(0).max(1),
-    coverage: z.object({
-      exampleCount: z.number(),
-      platformCount: z.number(),
-      intentCount: z.number()
-    }),
-    consistencyByFeature: z.object({
-      sentenceLength: z.number().min(0).max(1),
-      structure: z.number().min(0).max(1),
-      expressiveness: z.number().min(0).max(1),
-      metaphors: z.number().min(0).max(1),
-      tone: z.number().min(0).max(1),
-      assertiveness: z.number().min(0).max(1),
-      hooks: z.number().min(0).max(1)
-    })
-  })
-});
-
-const saveAnalysisTool = tool({
-  name: 'save_style_analysis',
-  description: 'Save the inferred style analysis to DynamoDB for the specified persona.',
-  schema: z.object({
-    personaId: z.string().describe('The persona ID to update'),
-    tenantId: z.string().describe('The tenant ID for isolation'),
-    styleAnalysis: styleInferenceOutputSchema.describe('The comprehensive style analysis data to save')
-  }),
-  handler: async (input) => {
-    try {
-      const { personaId, tenantId, styleAnalysis } = input;
-
-      const analysisWithTimestamp = {
-        ...styleAnalysis,
-        analysisTimestamp: new Date().toISOString()
-      };
-
-      const updateParams = {
-        TableName: process.env.TABLE_NAME,
-        Key: marshall({
-          pk: `${tenantId}#${personaId}`,
-          sk: 'persona'
-        }),
-        UpdateExpression: 'SET inferredStyle = :style, updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :inc',
-        ExpressionAttributeValues: marshall({
-          ':style': analysisWithTimestamp,
-          ':updatedAt': new Date().toISOString(),
-          ':zero': 0,
-          ':inc': 1
-        }),
-        ReturnValues: 'UPDATED_NEW'
-      };
-
-      const result = await ddb.send(new UpdateItemCommand(updateParams));
-
-      return `Successfully saved style analysis for persona ${personaId}.`;
-
-    } catch (error) {
-      console.error('Error saving style analysis:', error);
-      return `Failed to save style analysis: ${error.message}`;
-    }
-  }
 });
 
 /**
@@ -174,7 +79,8 @@ async function loadWritingExamples(tenantId, personaId) {
 export class StyleInferenceAgent {
   constructor() {
     this.agent = new Agent({
-      tools: [saveAnalysisTool],
+      model: process.env.MODEL_ID,
+      tools: [saveStyleAnalysisTool],
       printer: false
     });
   }
@@ -215,54 +121,42 @@ Intent: ${example.intent}`;
         })
         .join('\n\n---\n\n');
 
-      // Create comprehensive prompt for the agent
-      const analysisPrompt = `You are a writing style analysis expert. I need you to analyze the following ${recentExamples.length} writing samples and extract consistent communication patterns.
+      // Create comprehensive prompt for the agent using RISEN framework
+      const analysisPrompt = `**ROLE**: Act as a professional writing style analyst and linguistic pattern expert specializing in digital communication analysis and persona voice characterization.
 
-Each example includes the platform it was written for, the intent behind the content, any additional notes, and the actual text. Use all this context to understand how the persona adapts their writing style across different platforms and purposes.
+**INSTRUCTIONS**: Analyze the provided writing samples to extract consistent communication patterns, voice traits, and stylistic preferences. You must identify measurable linguistic features and behavioral patterns that define this persona's unique writing style across different platforms and contexts.
+
+**STEPS**:
+1. **Sample Review**: Examine all ${recentExamples.length} writing samples, noting platform context, intent, and content variations
+2. **Quantitative Analysis**: Calculate measurable metrics (sentence length, emoji frequency, expressiveness markers)
+3. **Qualitative Assessment**: Identify tone patterns, communication style, and voice characteristics
+4. **Pattern Recognition**: Determine consistent behaviors across platforms and content types
+5. **Confidence Scoring**: Evaluate analysis reliability based on sample coverage and consistency
+6. **Data Persistence**: Save structured analysis using the save_style_analysis tool
+
+**EXPECTATIONS**: Provide a comprehensive JSON-structured analysis containing:
+- Sentence & Paragraph Analysis with measurable metrics
+- Expressiveness Analysis with quantified markers
+- Metaphor & Analogy usage patterns
+- Tone Analysis with controlled vocabulary tags
+- Communication stance and assertiveness levels
+- Hook style preferences for content openings
+- Anecdote usage frequency
+- Diagnostic confidence scores for each dimension
+
+**NARROWING**:
+- Focus on cross-platform consistency while noting platform-specific adaptations
+- Distinguish between emoji usage and underlying personality expressiveness
+- Separate technical analogies from figurative language usage
+- Use only the specified tone vocabulary: direct, warm, candid, technical, playful, skeptical, optimistic, pragmatic, story-driven, educational
+- Provide confidence scores between 0.0-1.0 for overall analysis and per-feature reliability
+- Ensure analysis covers sentence patterns, structure preferences, pacing, expressiveness, metaphor usage, tone, assertiveness, hedging style, hook patterns, and anecdote frequency
 
 Here are the writing samples to analyze:
 
 ${formattedExamples}
 
-Please analyze these samples and provide a comprehensive style analysis with the following structure:
-
-**Sentence & Paragraph Analysis (measurable):**
-- Calculate average words per sentence across all examples
-- Determine variance in sentence length (low/medium/high)
-- Classify overall pattern (short/medium/long/varied)
-- Identify structure preference: prose vs lists vs mixed
-- Assess pacing: punchy (short bursts), even (consistent flow), or meandering (long, winding)
-
-**Expressiveness Analysis (separate emoji from personality):**
-- Count emoji frequency (0.0-1.0) - platform-dependent
-- Measure expressiveness markers: exclamation density, interjections ("y'all", "dang"), all-caps, parentheticals (low/medium/high)
-
-**Metaphor & Analogy (split by type):**
-- Technical analogies and comparisons (frequent/occasional/rare)
-- Figurative imagery and metaphorical language (frequent/occasional/rare)
-
-**Tone Analysis (controlled vocabulary + free text):**
-- Select 2-4 tone tags from: direct, warm, candid, technical, playful, skeptical, optimistic, pragmatic, story-driven, educational
-- Optional free-text tone summary
-
-**Stance & Communication Style:**
-- Assertiveness: how often they make strong claims vs soften (high/medium/low)
-- Hedging style: frequency of "maybe", "I think", "it depends" (rare/some/frequent)
-
-**Hook Style (how they open content):**
-- Identify dominant pattern: question, contrarian, story, data, straight-to-point, or mixed
-
-**Anecdote Usage:**
-- Personal stories and examples (frequent/occasional/rare)
-
-**Diagnostic Confidence:**
-- Overall confidence (0.0-1.0)
-- Coverage: count examples, platforms, and intents analyzed
-- Per-feature confidence scores for each analysis dimension
-
-Provide your analysis as a JSON object matching this structure exactly.
-
-After your analysis, use the save_style_analysis tool to save the results for persona "${personaId}" in tenant "${tenantId}".`;
+After completing your analysis, use the save_style_analysis tool to save the results for persona "${personaId}" in tenant "${tenantId}".`;
 
       const result = await this.agent.invoke(analysisPrompt);
 
@@ -360,4 +254,4 @@ export const handler = async (event) => {
 };
 
 // Export for use in other modules
-export { lambdaEventSchema, styleInferenceOutputSchema };
+export { lambdaEventSchema };

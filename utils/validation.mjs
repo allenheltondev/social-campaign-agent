@@ -6,7 +6,7 @@ import {
   UpdatePersonaRequestSchema,
   CreateWritingExampleRequestSchema,
   QueryPersonasRequestSchema
-} from '../schemas/persona.mjs';
+} from '../models/persona.mjs';
 import {
   BrandSchema,
   BrandAssetSchema,
@@ -14,7 +14,7 @@ import {
   UpdateBrandRequestSchema,
   CreateBrandAssetRequestSchema,
   QueryBrandsRequestSchema
-} from '../schemas/brand.mjs';
+} from '../models/brand.mjs';
 
 /**
  * Enhanced validation utilities for request/response processing

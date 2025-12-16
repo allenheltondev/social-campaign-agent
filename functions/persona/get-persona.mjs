@@ -1,8 +1,5 @@
-import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { Persona } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
-
-const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
   try {
@@ -17,25 +14,11 @@ export const handler = async (event) => {
       return formatResponse(400, { message: 'Missing personaId parameter' });
     }
 
-    const response = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${personaId}`,
-        sk: 'persona'
-      })
-    }));
+    const persona = await Persona.findById(tenantId, personaId);
 
-    if (!response.Item) {
+    if (!persona) {
       return formatResponse(404, { message: 'Persona not found' });
     }
-
-    const persona = unmarshall(response.Item);
-
-    // Remove DynamoDB keys from response
-    delete persona.pk;
-    delete persona.sk;
-    delete persona.GSI1PK;
-    delete persona.GSI1SK;
 
     return formatResponse(200, persona);
   } catch (error) {

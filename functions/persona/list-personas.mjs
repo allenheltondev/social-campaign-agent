@@ -1,6 +1,6 @@
 import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { QueryPersonasRequestSchema, validateQueryParams } from '../../schemas/persona.mjs';
+import { QueryPersonasRequestSchema, validateQueryParams } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 
 const ddb = new DynamoDBClient();

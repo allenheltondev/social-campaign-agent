@@ -10,7 +10,7 @@ import {
   validateQueryParams,
   generateBrandId,
   generateAssetId
-} from '../../schemas/brand.mjs';
+} from '../../models/brand.mjs';
 
 describe('Brand Schema Validation', () => {
   describe('Brand Creation Request Validation', () => {
@@ -28,9 +28,7 @@ describe('Brand Schema Validation', () => {
         contentStandards: {
           toneOfVoice: 'Professional yet approachable',
           styleGuidelines: 'Clear, concise, and engaging content',
-          primaryAudience: 'Business professionals aged 25-45',
-          qualityStandards: 'High-quality, error-free content',
-          approvalThreshold: 8
+          qualityStandards: 'High-quality, error-free content'
         },
         visualGuidelines: {
           colorScheme: {
@@ -185,12 +183,42 @@ describe('Brand Schema Validation', () => {
           trustworthy: 4,
           playful: 2
         },
+        platformGuidelines: {
+          enabled: ['twitter', 'linkedin'],
+          defaults: {
+            twitter: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'allowed', typicalCadencePerWeek: 5 },
+            linkedin: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'none', hashtagPolicy: 'sparing', typicalCadencePerWeek: 3 }
+          }
+        },
+        audienceProfile: {
+          primary: 'professionals',
+          segments: ['tech', 'business'],
+          excluded: ['students']
+        },
         contentStandards: {
           toneOfVoice: 'Professional',
           styleGuidelines: 'Clear content',
-          primaryAudience: 'Business professionals',
           qualityStandards: 'High quality',
-          approvalThreshold: 8
+          restrictions: ['no politics'],
+          avoidTopics: ['controversial'],
+          avoidPhrases: ['guaranteed']
+        },
+        pillars: [
+          { name: 'Innovation', weight: 0.5 },
+          { name: 'Quality', weight: 0.5 }
+        ],
+        claimsPolicy: {
+          noGuarantees: true,
+          noPerformanceNumbersUnlessProvided: true,
+          requireSourceForStats: true,
+          competitorMentionPolicy: 'avoid'
+        },
+        ctaLibrary: [
+          { type: 'learn_more', text: 'Learn more', defaultUrl: 'https://example.com' }
+        ],
+        approvalPolicy: {
+          threshold: 0.8,
+          mode: 'require_review_below_threshold'
         },
         visualGuidelines: {
           colorScheme: {

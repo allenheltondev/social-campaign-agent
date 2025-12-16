@@ -99,13 +99,62 @@ DELETE /brands/{brandId}/assets/{assetId} # Remove asset
     playful: 'number (1-5)'
   },
 
+  // Platform Guidelines
+  platformGuidelines: {
+    enabled: ['twitter | linkedin | instagram | facebook'],
+    defaults: {
+      [platform]: {
+        defaultAsset: 'none | image | video',
+        linkPolicy: 'allowed | discouraged | never',
+        emojiPolicy: 'none | sparing | allowed',
+        hashtagPolicy: 'none | sparing | allowed',
+        typicalCadencePerWeek: 'number (0-21)'
+      }
+    }
+  },
+
+  // Audience Profile
+  audienceProfile: {
+    primary: 'executives | professionals | consumers | technical | creative',
+    segments: ['string'] | null,
+    excluded: ['string'] | null
+  },
+
   // Content Standards
   contentStandards: {
     toneOfVoice: 'string',
     styleGuidelines: 'string',
-    primaryAudience: 'string',
     qualityStandards: 'string',
-    approvalThreshold: 'number'
+    restrictions: ['string'],
+    avoidTopics: ['string'],
+    avoidPhrases: ['string']
+  },
+
+  // Brand Pillars (formerly messaging themes)
+  pillars: [{
+    name: 'string',
+    weight: 'number | null'
+  }] | null,
+
+  // Claims & Compliance Policy
+  claimsPolicy: {
+    noGuarantees: 'boolean',
+    noPerformanceNumbersUnlessProvided: 'boolean',
+    requireSourceForStats: 'boolean',
+    competitorMentionPolicy: 'avoid | neutral_only | allowed'
+  },
+
+  // CTA Library
+  ctaLibrary: [{
+    type: 'string',
+    text: 'string',
+    defaultUrl: 'string | null'
+  }] | null,
+
+  // Approval Policy
+  approvalPolicy: {
+    threshold: 'number (0-1)',
+    mode: 'auto_approve | require_review_below_threshold | always_review'
   },
 
   // Visual Guidelines
@@ -123,8 +172,6 @@ DELETE /brands/{brandId}/assets/{assetId} # Remove asset
     imageryStyle: 'string',
     logoSpecs: 'object'
   },
-
-
 
   // Metadata
   tenantId: 'string',

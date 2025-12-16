@@ -1,7 +1,7 @@
 import { DynamoDBClient, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { CreateBrandAssetRequestSchema, validateRequestBody, generateAssetId } from '../../../schemas/brand.mjs';
+import { CreateBrandAssetRequestSchema, validateRequestBody, generateAssetId } from '../../../models/brand.mjs';
 import { formatResponse } from '../../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
 

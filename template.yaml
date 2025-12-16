@@ -67,6 +67,10 @@ Resources:
           AttributeType: S
         - AttributeName: GSI1SK
           AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -78,6 +82,14 @@ Resources:
             - AttributeName: GSI1PK
               KeyType: HASH
             - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -502,6 +514,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref PersonaTable
           EVENT_BUS_NAME: default
+          MODEL_ID: amazon.nova-pro-v1:0
       Events:
         StyleAnalysisRequest:
           Type: EventBridgeRule
@@ -932,6 +945,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref PersonaTable
           EVENT_BUS_NAME: default
+          MODEL_ID: amazon.nova-pro-v1:0
       Events:
         CampaignCreated:
           Type: EventBridgeRule
@@ -970,6 +984,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
+          MODEL_ID: amazon.nova-pro-v1:0
       Events:
         SocialPostCreated:
           Type: EventBridgeRule
@@ -978,6 +993,173 @@ Resources:
             Pattern:
               source: ["campaign-planner"]
               detail-type: ["Social Post Created"]
+
+  UpdateCampaignFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/update-campaign.mjs
+    Properties:
+      Handler: campaign/update-campaign.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        UpdateCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}
+            Method: PUT
+
+  DeleteCampaignFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/delete-campaign.mjs
+    Properties:
+      Handler: campaign/delete-campaign.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        DeleteCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}
+            Method: DELETE
+
+  ListCampaignsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/list-campaigns.mjs
+    Properties:
+      Handler: campaign/list-campaigns.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+                - !Sub "${PersonaTable.Arn}/index/GSI2"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ListCampaigns:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns
+            Method: GET
+
+  UpdateCampaignStatusFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/update-status.mjs
+    Properties:
+      Handler: campaign/update-status.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        StatusUpdateRequest:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["campaign-api", "campaign-planner", "content-generator"]
+              detail-type: ["Campaign Status Update Request"]
+
+  WorkflowCompletionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/events/workflow-completion.mjs
+    Properties:
+      Handler: campaign/events/workflow-completion.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          EVENT_BUS_NAME: default
+      Events:
+        WorkflowCompletion:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source: ["campaign-planner", "content-generator"]
+              detail-type: ["Campaign Planning Completed", "Campaign Planning Failed", "Content Generation Completed", "Content Generation Failed"]
 
 Outputs:
   PersonaApiUrl:

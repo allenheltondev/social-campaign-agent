@@ -7,7 +7,7 @@ import {
   CreateBrandAssetRequestSchema,
   generateBrandId,
   generateAssetId
-} from '../../schemas/brand.mjs';
+} from '../../models/brand.mjs';
 import { validateBrandEntity, validateBrandAssetEntity } from '../../utils/validation.mjs';
 
 /**
@@ -28,12 +28,50 @@ describe('Property-Based Tests - Brand Data', () => {
       trustworthy: fc.integer({ min: 1, max: 5 }),
       playful: fc.integer({ min: 1, max: 5 })
     }),
+    platformGuidelines: fc.record({
+      enabled: fc.array(fc.constantFrom('twitter', 'linkedin', 'instagram', 'facebook'), { minLength: 1, maxLength: 4 }),
+      defaults: fc.dictionary(
+        fc.constantFrom('twitter', 'linkedin', 'instagram', 'facebook'),
+        fc.record({
+          defaultAsset: fc.constantFrom('none', 'image', 'video'),
+          linkPolicy: fc.constantFrom('allowed', 'discouraged', 'never'),
+          emojiPolicy: fc.constantFrom('none', 'sparing', 'allowed'),
+          hashtagPolicy: fc.constantFrom('none', 'sparing', 'allowed'),
+          typicalCadencePerWeek: fc.integer({ min: 0, max: 21 })
+        })
+      )
+    }),
+    audienceProfile: fc.record({
+      primary: fc.constantFrom('executives', 'professionals', 'consumers', 'technical', 'creative'),
+      segments: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 10 })),
+      excluded: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 10 }))
+    }),
     contentStandards: fc.record({
       toneOfVoice: fc.string({ minLength: 1, maxLength: 500 }),
       styleGuidelines: fc.string({ minLength: 1, maxLength: 1000 }),
-      primaryAudience: fc.constantFrom('executives', 'professionals', 'consumers', 'technical', 'creative'),
       qualityStandards: fc.string({ minLength: 1, maxLength: 500 }),
-      approvalThreshold: fc.integer({ min: 1, max: 10 })
+      restrictions: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 200 }), { maxLength: 20 })),
+      avoidTopics: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 20 })),
+      avoidPhrases: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 50 }))
+    }),
+    pillars: fc.option(fc.array(fc.record({
+      name: fc.string({ minLength: 1, maxLength: 100 }),
+      weight: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: undefined })
+    }), { maxLength: 10 })),
+    claimsPolicy: fc.record({
+      noGuarantees: fc.boolean(),
+      noPerformanceNumbersUnlessProvided: fc.boolean(),
+      requireSourceForStats: fc.boolean(),
+      competitorMentionPolicy: fc.constantFrom('avoid', 'neutral_only', 'allowed')
+    }),
+    ctaLibrary: fc.option(fc.array(fc.record({
+      type: fc.string({ minLength: 1, maxLength: 50 }),
+      text: fc.string({ minLength: 1, maxLength: 200 }),
+      defaultUrl: fc.option(fc.webUrl(), { nil: null })
+    }), { maxLength: 20 })),
+    approvalPolicy: fc.record({
+      threshold: fc.float({ min: 0, max: 1, noNaN: true }),
+      mode: fc.constantFrom('auto_approve', 'require_review_below_threshold', 'always_review')
     }),
     visualGuidelines: fc.record({
       colorScheme: fc.record({
@@ -70,9 +108,10 @@ describe('Property-Based Tests - Brand Data', () => {
     const contentStandardsArb = fc.record({
       toneOfVoice: fc.string({ minLength: 1, maxLength: 500 }),
       styleGuidelines: fc.string({ minLength: 1, maxLength: 1000 }),
-      primaryAudience: fc.string({ minLength: 1, maxLength: 200 }),
       qualityStandards: fc.string({ minLength: 1, maxLength: 500 }),
-      approvalThreshold: fc.integer({ min: 1, max: 10 })
+      restrictions: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 200 }), { maxLength: 20 })),
+      avoidTopics: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 20 })),
+      avoidPhrases: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 50 }))
     });
 
     // Generator for visual guidelines
@@ -96,14 +135,52 @@ describe('Property-Based Tests - Brand Data', () => {
       })
     });
 
-    // Generator for valid brand creation request
+    // Generator for valid brand creation request (new fields are optional in requests)
     const createBrandRequestArb = fc.record({
       name: fc.string({ minLength: 1, maxLength: 100 }),
       ethos: fc.string({ minLength: 1, maxLength: 1000 }),
       coreValues: fc.array(fc.string({ minLength: 1, maxLength: 200 }), { minLength: 1, maxLength: 10 }),
       personalityTraits: personalityTraitsArb,
       contentStandards: contentStandardsArb,
-      visualGuidelines: visualGuidelinesArb
+      visualGuidelines: visualGuidelinesArb,
+      // Enhanced features are optional in creation requests (use undefined, not null)
+      platformGuidelines: fc.option(fc.record({
+        enabled: fc.array(fc.constantFrom('twitter', 'linkedin', 'instagram', 'facebook'), { minLength: 1, maxLength: 4 }),
+        defaults: fc.dictionary(
+          fc.constantFrom('twitter', 'linkedin', 'instagram', 'facebook'),
+          fc.record({
+            defaultAsset: fc.constantFrom('none', 'image', 'video'),
+            linkPolicy: fc.constantFrom('allowed', 'discouraged', 'never'),
+            emojiPolicy: fc.constantFrom('none', 'sparing', 'allowed'),
+            hashtagPolicy: fc.constantFrom('none', 'sparing', 'allowed'),
+            typicalCadencePerWeek: fc.integer({ min: 0, max: 21 })
+          })
+        )
+      }), { nil: undefined }),
+      audienceProfile: fc.option(fc.record({
+        primary: fc.constantFrom('executives', 'professionals', 'consumers', 'technical', 'creative'),
+        segments: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 10 }), { nil: undefined }),
+        excluded: fc.option(fc.array(fc.string({ minLength: 1, maxLength: 100 }), { maxLength: 10 }), { nil: undefined })
+      }), { nil: undefined }),
+      pillars: fc.option(fc.array(fc.record({
+        name: fc.string({ minLength: 1, maxLength: 100 }),
+        weight: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: undefined })
+      }), { maxLength: 10 }), { nil: undefined }),
+      claimsPolicy: fc.option(fc.record({
+        noGuarantees: fc.boolean(),
+        noPerformanceNumbersUnlessProvided: fc.boolean(),
+        requireSourceForStats: fc.boolean(),
+        competitorMentionPolicy: fc.constantFrom('avoid', 'neutral_only', 'allowed')
+      }), { nil: undefined }),
+      ctaLibrary: fc.option(fc.array(fc.record({
+        type: fc.string({ minLength: 1, maxLength: 50 }),
+        text: fc.string({ minLength: 1, maxLength: 200 }),
+        defaultUrl: fc.option(fc.webUrl(), { nil: undefined })
+      }), { maxLength: 20 }), { nil: undefined }),
+      approvalPolicy: fc.option(fc.record({
+        threshold: fc.float({ min: 0, max: 1, noNaN: true }),
+        mode: fc.constantFrom('auto_approve', 'require_review_below_threshold', 'always_review')
+      }), { nil: undefined })
     });
 
     it('should maintain data consistency through creation and validation cycle', () => {
@@ -112,7 +189,7 @@ describe('Property-Based Tests - Brand Data', () => {
           // Step 1: Validate the creation request
           const validatedRequest = CreateBrandRequestSchema.parse(brandRequest);
 
-          // Step 2: Simulate brand creation by adding generated metadata
+          // Step 2: Simulate brand creation by adding generated metadata and defaults
           const brandId = generateBrandId();
           const now = new Date().toISOString();
 
@@ -120,6 +197,41 @@ describe('Property-Based Tests - Brand Data', () => {
             ...validatedRequest,
             brandId,
             tenantId,
+
+            // Add defaults for enhanced features if not provided (simulating create-brand.mjs logic)
+            platformGuidelines: validatedRequest.platformGuidelines ?? {
+              enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
+              defaults: {
+                twitter: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'allowed', typicalCadencePerWeek: 5 },
+                linkedin: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'none', hashtagPolicy: 'sparing', typicalCadencePerWeek: 3 },
+                instagram: { defaultAsset: 'image', linkPolicy: 'discouraged', emojiPolicy: 'allowed', hashtagPolicy: 'allowed', typicalCadencePerWeek: 7 },
+                facebook: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'sparing', typicalCadencePerWeek: 4 }
+              }
+            },
+
+            audienceProfile: validatedRequest.audienceProfile ?? {
+              primary: 'professionals',
+              segments: null,
+              excluded: null
+            },
+
+            claimsPolicy: validatedRequest.claimsPolicy ?? {
+              noGuarantees: true,
+              noPerformanceNumbersUnlessProvided: true,
+              requireSourceForStats: true,
+              competitorMentionPolicy: 'avoid'
+            },
+
+            ctaLibrary: validatedRequest.ctaLibrary ?? [
+              { type: 'learn_more', text: 'Learn more', defaultUrl: null },
+              { type: 'get_started', text: 'Get started', defaultUrl: null }
+            ],
+
+            approvalPolicy: validatedRequest.approvalPolicy ?? {
+              threshold: 0.7,
+              mode: 'auto_approve'
+            },
+
             createdAt: now,
             updatedAt: now,
             version: 1,
@@ -438,6 +550,31 @@ describe('Property-Based Tests - Brand Data', () => {
               ...initialBrandData,
               brandId,
               tenantId,
+              // Add required fields that might be missing from initialBrandData
+              platformGuidelines: initialBrandData.platformGuidelines ?? {
+                enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
+                defaults: {
+                  twitter: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'allowed', typicalCadencePerWeek: 5 },
+                  linkedin: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'none', hashtagPolicy: 'sparing', typicalCadencePerWeek: 3 },
+                  instagram: { defaultAsset: 'image', linkPolicy: 'discouraged', emojiPolicy: 'allowed', hashtagPolicy: 'allowed', typicalCadencePerWeek: 7 },
+                  facebook: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'sparing', typicalCadencePerWeek: 4 }
+                }
+              },
+              audienceProfile: initialBrandData.audienceProfile ?? {
+                primary: 'professionals',
+                segments: null,
+                excluded: null
+              },
+              claimsPolicy: initialBrandData.claimsPolicy ?? {
+                noGuarantees: true,
+                noPerformanceNumbersUnlessProvided: true,
+                requireSourceForStats: true,
+                competitorMentionPolicy: 'avoid'
+              },
+              approvalPolicy: initialBrandData.approvalPolicy ?? {
+                threshold: 0.7,
+                mode: 'auto_approve'
+              },
               createdAt: initialTimestamp,
               updatedAt: initialTimestamp,
               version: 1,
@@ -550,6 +687,31 @@ describe('Property-Based Tests - Brand Data', () => {
               ...initialBrandData,
               brandId,
               tenantId,
+              // Add required fields that might be missing from initialBrandData
+              platformGuidelines: initialBrandData.platformGuidelines ?? {
+                enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
+                defaults: {
+                  twitter: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'allowed', typicalCadencePerWeek: 5 },
+                  linkedin: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'none', hashtagPolicy: 'sparing', typicalCadencePerWeek: 3 },
+                  instagram: { defaultAsset: 'image', linkPolicy: 'discouraged', emojiPolicy: 'allowed', hashtagPolicy: 'allowed', typicalCadencePerWeek: 7 },
+                  facebook: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'sparing', typicalCadencePerWeek: 4 }
+                }
+              },
+              audienceProfile: initialBrandData.audienceProfile ?? {
+                primary: 'professionals',
+                segments: null,
+                excluded: null
+              },
+              claimsPolicy: initialBrandData.claimsPolicy ?? {
+                noGuarantees: true,
+                noPerformanceNumbersUnlessProvided: true,
+                requireSourceForStats: true,
+                competitorMentionPolicy: 'avoid'
+              },
+              approvalPolicy: initialBrandData.approvalPolicy ?? {
+                threshold: 0.7,
+                mode: 'auto_approve'
+              },
               createdAt: initialTimestamp,
               updatedAt: initialTimestamp,
               version: 1,
@@ -964,6 +1126,31 @@ describe('Property-Based Tests - Brand Data', () => {
                   ...brandData,
                   brandId,
                   tenantId,
+                  // Add required fields that might be missing from brandData
+                  platformGuidelines: brandData.platformGuidelines ?? {
+                    enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
+                    defaults: {
+                      twitter: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'allowed', typicalCadencePerWeek: 5 },
+                      linkedin: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'none', hashtagPolicy: 'sparing', typicalCadencePerWeek: 3 },
+                      instagram: { defaultAsset: 'image', linkPolicy: 'discouraged', emojiPolicy: 'allowed', hashtagPolicy: 'allowed', typicalCadencePerWeek: 7 },
+                      facebook: { defaultAsset: 'none', linkPolicy: 'allowed', emojiPolicy: 'sparing', hashtagPolicy: 'sparing', typicalCadencePerWeek: 4 }
+                    }
+                  },
+                  audienceProfile: brandData.audienceProfile ?? {
+                    primary: 'professionals',
+                    segments: null,
+                    excluded: null
+                  },
+                  claimsPolicy: brandData.claimsPolicy ?? {
+                    noGuarantees: true,
+                    noPerformanceNumbersUnlessProvided: true,
+                    requireSourceForStats: true,
+                    competitorMentionPolicy: 'avoid'
+                  },
+                  approvalPolicy: brandData.approvalPolicy ?? {
+                    threshold: 0.7,
+                    mode: 'auto_approve'
+                  },
                   createdAt: now,
                   updatedAt: now,
                   version: 1,
@@ -1438,11 +1625,11 @@ describe('Property-Based Tests - Brand Data', () => {
               }
 
               // Approval threshold range filter
-              if (filters.minApprovalThreshold && brand.contentStandards.approvalThreshold < filters.minApprovalThreshold) {
+              if (filters.minApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined && brand.contentStandards.approvalThreshold < filters.minApprovalThreshold) {
                 return false;
               }
 
-              if (filters.maxApprovalThreshold && brand.contentStandards.approvalThreshold > filters.maxApprovalThreshold) {
+              if (filters.maxApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined && brand.contentStandards.approvalThreshold > filters.maxApprovalThreshold) {
                 return false;
               }
 
@@ -1459,11 +1646,11 @@ describe('Property-Based Tests - Brand Data', () => {
                 expect(brand.contentStandards.primaryAudience).toBe(filters.primaryAudience);
               }
 
-              if (filters.minApprovalThreshold) {
+              if (filters.minApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined) {
                 expect(brand.contentStandards.approvalThreshold).toBeGreaterThanOrEqual(filters.minApprovalThreshold);
               }
 
-              if (filters.maxApprovalThreshold) {
+              if (filters.maxApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined) {
                 expect(brand.contentStandards.approvalThreshold).toBeLessThanOrEqual(filters.maxApprovalThreshold);
               }
             });
@@ -1482,11 +1669,11 @@ describe('Property-Based Tests - Brand Data', () => {
                 shouldMatch = false;
               }
 
-              if (filters.minApprovalThreshold && brand.contentStandards.approvalThreshold < filters.minApprovalThreshold) {
+              if (filters.minApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined && brand.contentStandards.approvalThreshold < filters.minApprovalThreshold) {
                 shouldMatch = false;
               }
 
-              if (filters.maxApprovalThreshold && brand.contentStandards.approvalThreshold > filters.maxApprovalThreshold) {
+              if (filters.maxApprovalThreshold && brand.contentStandards.approvalThreshold !== undefined && brand.contentStandards.approvalThreshold > filters.maxApprovalThreshold) {
                 shouldMatch = false;
               }
 
@@ -1749,12 +1936,36 @@ describe('Property-Based Tests - Brand Data', () => {
                 ethos: 'Test ethos',
                 coreValues: ['Value 1'],
                 personalityTraits: { formal: 3, innovative: 4, trustworthy: 5, playful: 2 },
+                platformGuidelines: {
+                  enabled: ['twitter', 'linkedin'],
+                  defaults: {}
+                },
+                audienceProfile: {
+                  primary: 'professionals',
+                  segments: null,
+                  excluded: null
+                },
                 contentStandards: {
                   toneOfVoice: 'Professional',
                   styleGuidelines: 'Clear',
-                  primaryAudience: 'professionals',
                   qualityStandards: 'High',
-                  approvalThreshold: 8
+                  primaryAudience: 'professionals',
+                  approvalThreshold: 8,
+                  restrictions: null,
+                  avoidTopics: null,
+                  avoidPhrases: null
+                },
+                pillars: null,
+                claimsPolicy: {
+                  noGuarantees: true,
+                  noPerformanceNumbersUnlessProvided: true,
+                  requireSourceForStats: true,
+                  competitorMentionPolicy: 'avoid'
+                },
+                ctaLibrary: null,
+                approvalPolicy: {
+                  threshold: 0.7,
+                  mode: 'auto_approve'
                 },
                 visualGuidelines: {
                   colorScheme: { primary: '#000000', secondary: [], accent: [] },
@@ -2010,12 +2221,36 @@ describe('Property-Based Tests - Brand Data', () => {
               ethos: 'Test ethos for lifecycle management',
               coreValues: ['Innovation', 'Quality'],
               personalityTraits: { formal: 3, innovative: 4, trustworthy: 5, playful: 2 },
+              platformGuidelines: {
+                enabled: ['twitter', 'linkedin'],
+                defaults: {}
+              },
+              audienceProfile: {
+                primary: 'professionals',
+                segments: null,
+                excluded: null
+              },
               contentStandards: {
                 toneOfVoice: 'Professional',
                 styleGuidelines: 'Clear and concise',
-                primaryAudience: 'professionals',
                 qualityStandards: 'High quality content',
-                approvalThreshold: 8
+                primaryAudience: 'professionals',
+                approvalThreshold: 8,
+                restrictions: null,
+                avoidTopics: null,
+                avoidPhrases: null
+              },
+              pillars: null,
+              claimsPolicy: {
+                noGuarantees: true,
+                noPerformanceNumbersUnlessProvided: true,
+                requireSourceForStats: true,
+                competitorMentionPolicy: 'avoid'
+              },
+              ctaLibrary: null,
+              approvalPolicy: {
+                threshold: 0.7,
+                mode: 'auto_approve'
               },
               visualGuidelines: {
                 colorScheme: { primary: '#000000', secondary: ['#666666'], accent: ['#ff0000'] },

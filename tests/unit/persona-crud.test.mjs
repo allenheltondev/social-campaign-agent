@@ -175,6 +175,26 @@ describe('Persona CRUD Lambda Functions', () => {
         company: 'Corp',
         primaryAudience: 'professionals',
         voiceTraits: ['professional'],
+        writingHabits: {
+          paragraphs: 'medium',
+          questions: 'occasional',
+          emojis: 'sparing',
+          structure: 'prose'
+        },
+        opinions: {
+          strongBeliefs: ['Quality matters'],
+          avoidsTopics: []
+        },
+        language: {
+          avoid: [],
+          prefer: []
+        },
+        ctaStyle: {
+          aggressiveness: 'medium',
+          patterns: []
+        },
+        createdAt: '2023-01-01T00:00:00.000Z',
+        updatedAt: '2023-01-01T00:00:00.000Z',
         version: 1,
         isActive: true,
         pk: 'test-tenant#test-persona-id',

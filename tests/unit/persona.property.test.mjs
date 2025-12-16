@@ -4,7 +4,7 @@ import {
   PersonaSchema,
   CreatePersonaRequestSchema,
   generatePersonaId
-} from '../../schemas/persona.mjs';
+} from '../../models/persona.mjs';
 import { validatePersonaEntity } from '../../utils/validation.mjs';
 
 /**

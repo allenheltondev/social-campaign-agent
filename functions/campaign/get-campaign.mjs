@@ -1,6 +1,5 @@
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
-import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { marshall } from '@aws-sdk/util-dynamodb';
+import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 import { formatResponse } from '../../utils/api-response.mjs';
 
 const ddb = new DynamoDBClient();
@@ -28,23 +27,26 @@ export const handler = async (event) => {
 
     const campaign = unmarshall(result.Item);
 
-    if (campaign.isActive === false) {
-      return formatResponse(404, { message: 'Campaign not found' });
-    }
-
     const response = {
-      id: campaign.campaignId,
-      description: campaign.description,
-      personaIds: campaign.personaIds,
-      platforms: campaign.platforms,
+      id: campaign.id,
+      tenantId: campaign.tenantId,
       brandId: campaign.brandId,
-      duration: campaign.duration,
+      name: campaign.name,
+      brief: campaign.brief,
+      participants: campaign.participants,
+      schedule: campaign.schedule,
+      cadenceOverrides: campaign.cadenceOverrides,
+      messaging: campaign.messaging,
+      assetOverrides: campaign.assetOverrides,
       status: campaign.status,
       planSummary: campaign.planSummary,
+      lastError: campaign.lastError,
+      metadata: campaign.metadata,
       createdAt: campaign.createdAt,
       updatedAt: campaign.updatedAt,
       completedAt: campaign.completedAt,
-      version: campaign.version
+      version: campaign.version,
+      planVersion: campaign.planVersion
     };
 
     return formatResponse(200, response);
