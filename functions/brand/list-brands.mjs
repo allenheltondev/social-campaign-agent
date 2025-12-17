@@ -9,18 +9,8 @@ export const handler = async (event) => {
   const operation = 'list-brands';
 
   try {
-    const { tenantId } = event;
-    const {
-      search,
-      status,
-      primaryAudience,
-      minApprovalThreshold,
-      maxApprovalThreshold,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      limit = 20,
-      lastEvaluatedKey
-    } = event.queryStringParameters || {};
+    const { tenantId } = event.requestContext.authorizer;
+    const { search, limit = 20, lastEvaluatedKey } = event.queryStringParameters || {};
 
     if (!tenantId) {
       throw new BrandError('Tenant ID is required', BrandErrorCodes.VALIDATION_ERROR, 400);
@@ -34,47 +24,12 @@ export const handler = async (event) => {
         ':tenantId': tenantId,
         ':brandPrefix': 'BRAND#'
       }),
-      ScanIndexForward: sortOrder === 'asc',
+      ScanIndexForward: true,
       Limit: parseInt(limit)
     };
 
     if (lastEvaluatedKey) {
       queryParams.ExclusiveStartKey = JSON.parse(decodeURIComponent(lastEvaluatedKey));
-    }
-
-    const filterExpressions = [];
-    const filterValues = {};
-
-    if (status) {
-      filterExpressions.push('#status = :status');
-      filterValues[':status'] = status;
-      queryParams.ExpressionAttributeNames = {
-        ...queryParams.ExpressionAttributeNames,
-        '#status': 'status'
-      };
-    }
-
-    if (primaryAudience) {
-      filterExpressions.push('contentStandards.primaryAudience = :primaryAudience');
-      filterValues[':primaryAudience'] = primaryAudience;
-    }
-
-    if (minApprovalThreshold) {
-      filterExpressions.push('contentStandards.approvalThreshold >= :minThreshold');
-      filterValues[':minThreshold'] = parseInt(minApprovalThreshold);
-    }
-
-    if (maxApprovalThreshold) {
-      filterExpressions.push('contentStandards.approvalThreshold <= :maxThreshold');
-      filterValues[':maxThreshold'] = parseInt(maxApprovalThreshold);
-    }
-
-    if (filterExpressions.length > 0) {
-      queryParams.FilterExpression = filterExpressions.join(' AND ');
-      queryParams.ExpressionAttributeValues = marshall({
-        ...unmarshall(queryParams.ExpressionAttributeValues),
-        ...filterValues
-      });
     }
 
     const response = await ddb.send(new QueryCommand(queryParams));

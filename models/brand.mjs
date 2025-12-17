@@ -11,11 +11,20 @@ export const BrandSchema = z.object({
   name: z.string().min(1).max(100),
   ethos: z.string().min(1).max(1000),
   coreValues: z.array(z.string().min(1).max(200)).min(1).max(10),
-  personalityTraits: z.object({
-    formal: z.number().min(1).max(5),
-    innovative: z.number().min(1).max(5),
-    trustworthy: z.number().min(1).max(5),
-    playful: z.number().min(1).max(5)
+  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
+  voiceGuidelines: z.object({
+    tone: z.array(z.string().min(1).max(50)).min(1).max(10),
+    style: z.array(z.string().min(1).max(50)).min(1).max(10),
+    messaging: z.array(z.string().min(1).max(100)).min(1).max(10)
+  }),
+  visualIdentity: z.object({
+    colorPalette: z.array(z.string().min(1).max(50)).min(1).max(10),
+    typography: z.array(z.string().min(1).max(100)).min(1).max(5),
+    imagery: z.array(z.string().min(1).max(100)).min(1).max(10)
+  }),
+  contentStandards: z.object({
+    qualityRequirements: z.array(z.string().min(1).max(100)).min(1).max(10),
+    restrictions: z.array(z.string().min(1).max(200)).max(20)
   }),
   platformGuidelines: z.object({
     enabled: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook'])).min(1),
@@ -29,22 +38,11 @@ export const BrandSchema = z.object({
         typicalCadencePerWeek: z.number().min(0).max(21)
       })
     )
-  }),
+  }).optional(),
   audienceProfile: z.object({
-    primary: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
     segments: z.array(z.string().min(1).max(100)).max(10).nullable().optional(),
     excluded: z.array(z.string().min(1).max(100)).max(10).nullable().optional()
-  }),
-  contentStandards: z.object({
-    toneOfVoice: z.string().min(1).max(500),
-    styleGuidelines: z.string().min(1).max(1000),
-    qualityStandards: z.string().min(1).max(500),
-    primaryAudience: z.string().min(1).max(200).optional(),
-    approvalThreshold: z.number().min(1).max(10).optional(),
-    restrictions: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
-    avoidTopics: z.array(z.string().min(1).max(100)).max(20).nullable().optional(),
-    avoidPhrases: z.array(z.string().min(1).max(100)).max(50).nullable().optional()
-  }),
+  }).optional(),
   pillars: z.array(z.object({
     name: z.string().min(1).max(100),
     weight: z.number().min(0).max(1).optional()
@@ -54,7 +52,7 @@ export const BrandSchema = z.object({
     noPerformanceNumbersUnlessProvided: z.boolean(),
     requireSourceForStats: z.boolean(),
     competitorMentionPolicy: z.enum(['avoid', 'neutral_only', 'allowed'])
-  }),
+  }).optional(),
   ctaLibrary: z.array(z.object({
     type: z.string().min(1).max(50),
     text: z.string().min(1).max(200),
@@ -63,25 +61,6 @@ export const BrandSchema = z.object({
   approvalPolicy: z.object({
     threshold: z.number().min(0).max(1),
     mode: z.enum(['auto_approve', 'require_review_below_threshold', 'always_review'])
-  }),
-  visualGuidelines: z.object({
-    colorScheme: z.object({
-      primary: z.string().min(1).max(50).optional(),
-      secondary: z.array(z.string().min(1).max(50)).max(10).optional(),
-      accent: z.array(z.string().min(1).max(50)).max(10).optional()
-    }).optional(),
-    typography: z.object({
-      primaryFont: z.string().min(1).max(100).optional(),
-      secondaryFont: z.string().min(1).max(100).optional(),
-      headingStyle: z.string().min(1).max(200).optional()
-    }).optional(),
-    imageryStyle: z.string().min(1).max(500).optional(),
-    logoSpecs: z.object({
-      minSize: z.string().max(50).optional(),
-      maxSize: z.string().max(50).optional(),
-      clearSpace: z.string().max(100).optional(),
-      placement: z.string().max(200).optional()
-    }).optional()
   }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -245,7 +224,6 @@ export class Brand {
         }
       },
       audienceProfile: {
-        primary: 'professionals',
         segments: null,
         excluded: null
       },

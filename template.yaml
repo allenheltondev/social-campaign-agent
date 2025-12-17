@@ -37,7 +37,7 @@ Conditions:
 Metadata:
   esbuild-properties: &esbuild-properties
     Format: esm
-    Minify: true
+    Minify: false
     OutExtension:
       - .js=.mjs
     Target: es2020
@@ -47,8 +47,7 @@ Metadata:
     Banner:
       - js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);
     External:
-      - '@aws-sdk/client-bedrock-runtime'
-      - '@strands-agents/sdk'
+      - "@aws-sdk/*"
     Loader: []
 
 Resources:
@@ -499,8 +498,11 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-                - bedrock:Converse
-              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/amazon.nova-*
+                - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/us.amazon.nova-*
+                - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/global.anthropic.claude-sonnet-*
+                - arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-*
             - Effect: Allow
               Action:
                 - dynamodb:Query
@@ -514,7 +516,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref PersonaTable
           EVENT_BUS_NAME: default
-          MODEL_ID: amazon.nova-pro-v1:0
+          MODEL_ID: us.amazon.nova-pro-v1:0
       Events:
         StyleAnalysisRequest:
           Type: EventBridgeRule
@@ -835,21 +837,106 @@ Resources:
         - Version: 2012-10-17
           Statement:
             - Effect: Allow
-              Action: dynamodb:PutItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action: events:PutEvents
-              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+              Action: lambda:InvokeFunction
+              Resource: !Sub '${BuildCampaignFunction.Arn}:*'
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
+          BUILD_CAMPAIGN_FUNCTION_NAME: !Ref BuildCampaignFunction
       Events:
         CreateCampaign:
           Type: Api
           Properties:
             RestApiId: !Ref CampaignApi
             Path: /campaigns
+            Method: POST
+
+  BuildCampaignFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/build-campaign.mjs
+    Properties:
+      Handler: campaign/build-campaign.handler
+      Timeout: 300
+      DurableConfig:
+        ExecutionTimeout: 604800 # 1 week
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:BatchWriteItem
+                - dynamodb:BatchGetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+                - !Sub "${PersonaTable.Arn}/index/GSI2"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/amazon.nova-*
+                - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/us.amazon.nova-*
+                - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/global.anthropic.claude-sonnet-*
+                - arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-*
+            - Effect: Allow
+              Action:
+                - lambda:SendDurableExecutionCallbackSuccess
+                - lambda:SendDurableExecutionCallbackFailure
+                - lambda:WaitForCallback
+                - lambda:CreateDurableExecution
+                - lambda:GetDurableExecution
+              Resource: "*"
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          # MODEL_ID: us.amazon.nova-pro-v1:0
+
+  ApprovalCallbackFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/approval-callback.mjs
+    Properties:
+      Handler: campaign/approval-callback.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: lambda:SendDurableExecutionCallbackSuccess
+              Resource: "*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ApprovalApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}/approve
             Method: POST
 
   GetCampaignFunction:
@@ -909,90 +996,6 @@ Resources:
             RestApiId: !Ref CampaignApi
             Path: /campaigns/{campaignId}/posts
             Method: GET
-
-  CampaignPlannerFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - agents/campaign-planner.mjs
-    Properties:
-      Handler: agents/campaign-planner.handler
-      Timeout: 300
-      MemorySize: 2048
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - bedrock:InvokeModel
-                - bedrock:Converse
-              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:PutItem
-                - dynamodb:UpdateItem
-                - dynamodb:BatchWriteItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action: events:PutEvents
-              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
-          MODEL_ID: amazon.nova-pro-v1:0
-      Events:
-        CampaignCreated:
-          Type: EventBridgeRule
-          Properties:
-            EventBusName: default
-            Pattern:
-              source: ["campaign-api"]
-              detail-type: ["Campaign Created"]
-
-  ContentGeneratorFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - agents/content-generator.mjs
-    Properties:
-      Handler: agents/content-generator.handler
-      Timeout: 120
-      MemorySize: 2048
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - bedrock:InvokeModel
-                - bedrock:Converse
-              Resource: "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          MODEL_ID: amazon.nova-pro-v1:0
-      Events:
-        SocialPostCreated:
-          Type: EventBridgeRule
-          Properties:
-            EventBusName: default
-            Pattern:
-              source: ["campaign-planner"]
-              detail-type: ["Social Post Created"]
 
   UpdateCampaignFunction:
     Type: AWS::Serverless::Function
@@ -1161,6 +1164,8 @@ Resources:
               source: ["campaign-planner", "content-generator"]
               detail-type: ["Campaign Planning Completed", "Campaign Planning Failed", "Content Generation Completed", "Content Generation Failed"]
 
+
+
 Outputs:
   PersonaApiUrl:
     Description: API Gateway endpoint URL for Persona Management API
@@ -1177,8 +1182,3 @@ Outputs:
   UserPoolDomain:
     Description: Cognito User Pool Domain
     Value: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
-
-  BrandAssetsBucket:
-    Description: S3 bucket for brand assets
-    Value: !Ref BrandAssetsBucket
-

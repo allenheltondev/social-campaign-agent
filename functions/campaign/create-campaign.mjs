@@ -1,12 +1,8 @@
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
-import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
-import { marshall } from '@aws-sdk/util-dynamodb';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { CreateCampaignRequestSchema, validateRequestBody, generateCampaignId } from '../../models/campaign.mjs';
-import { Campaign } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 
-const ddb = new DynamoDBClient();
-const eventBridge = new EventBridgeClient();
+const lambda = new LambdaClient();
 
 export const handler = async (event) => {
   try {
@@ -23,55 +19,49 @@ export const handler = async (event) => {
 
     const campaign = {
       id: campaignId,
-      tenantId,
-      brandId: requestData.brandId || null,
       name: requestData.name,
       brief: requestData.brief,
       participants: {
         ...requestData.participants,
         distribution: requestData.participants.distribution || { mode: 'balanced' }
       },
-      schedule: requestData.schedule,
-      cadenceOverrides: requestData.cadenceOverrides || null,
-      messaging: requestData.messaging || null,
-      assetOverrides: requestData.assetOverrides || null,
-      status: 'planning',
-      planSummary: null,
-      lastError: null,
-      metadata: requestData.metadata || { source: 'api' },
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-      version: 1,
-      planVersion: null
+      schedule: requestData.schedule
     };
 
-    const dynamoItem = Campaign.transformToDynamoDB(tenantId, campaign);
+    if (requestData.brandId) {
+      campaign.brandId = requestData.brandId;
+    }
 
-    await ddb.send(new PutItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: marshall(dynamoItem),
-      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
-    }));
+    if (requestData.cadenceOverrides) {
+      campaign.cadenceOverrides = requestData.cadenceOverrides;
+    }
 
-    await eventBridge.send(new PutEventsCommand({
-      Entries: [
-        {
-          Source: 'campaign-api',
-          DetailType: 'Campaign Created',
-          Detail: JSON.stringify({
-            campaignId,
-            tenantId,
-            campaign: campaign
-          }),
-          EventBusName: process.env.EVENT_BUS_NAME || 'default'
-        }
-      ]
+    if (requestData.messaging) {
+      campaign.messaging = requestData.messaging;
+    }
+
+    if (requestData.assetOverrides) {
+      campaign.assetOverrides = requestData.assetOverrides;
+    }
+
+    if (requestData.metadata) {
+      campaign.metadata = requestData.metadata;
+    } else {
+      campaign.metadata = { source: 'api' };
+    }
+
+    await lambda.send(new InvokeCommand({
+      FunctionName: `${process.env.BUILD_CAMPAIGN_FUNCTION_NAME}:$LATEST`,
+      InvocationType: 'Event',
+      Payload: JSON.stringify({
+        tenantId,
+        campaign
+      })
     }));
 
     return formatResponse(202, {
       id: campaignId,
-      status: 'planning',
+      status: 'building',
       message: 'Campaign creation initiated'
     });
   } catch (error) {

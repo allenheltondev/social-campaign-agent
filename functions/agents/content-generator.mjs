@@ -1,74 +1,136 @@
-import { Agent } from '@strands-agents/sdk';
-import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall } from '@aws-sdk/util-dynamodb';
-import {
-  getPersonaDetailsTool,
-  getBrandDetailsTool,
-  getPostDetailsTool,
-  getCampaignDetailsTool,
-  saveGeneratedContentTool
-} from './tools.mjs';
+import { Agent, BedrockModel } from '@strands-agents/sdk';
+import { DynamoDBClient, UpdateItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { Campaign } from '../../models/campaign.mjs';
+import { Persona } from '../../models/persona.mjs';
+import { Brand } from '../../models/brand.mjs';
+import { saveGeneratedContentTool } from './tools.mjs';
 
 const ddb = new DynamoDBClient();
 
-const contentGeneratorAgent = new Agent({
-  systemPrompt: `**ROLE**: Act as an expert social media content creator and brand voice specialist with deep expertise in persona-authentic content generation, platform optimization, and brand alignment.
-
-**INSTRUCTIONS**: Generate authentic, engaging social media posts that perfectly match specific persona voices while adhering to brand guidelines. You must create content that feels natural and genuine to each persona's unique communication style while achieving the intended strategic objectives.
-
-**STEPS**:
-1. **Context Gathering**:
-   - Retrieve post details using get_post_details to understand topic, platform, and requirements
-   - Get campaign context using get_campaign_details for strategic alignment
-   - Load persona profile using get_persona_details to understand voice, style, and preferences
-   - If applicable, fetch brand guidelines using get_brand_details for compliance requirements
-
-2. **Voice Analysis**:
-   - Study persona's inferred style patterns (sentence length, structure, tone, pacing)
-   - Review voice traits, writing habits, and communication preferences
-   - Identify language restrictions and topic guardrails
-   - Understand CTA style preferences and opinion framework
-
-3. **Content Creation**:
-   - Generate platform-optimized content matching persona's authentic voice
-   - Integrate assigned topic naturally within persona's expertise area
-   - Apply appropriate hashtags and mentions for platform and audience
-   - Ensure brand guideline compliance if brand is associated
-
-4. **Quality Validation & Delivery**:
-   - Verify content authenticity against persona voice patterns
-   - Confirm platform-specific requirements are met
-   - Save final content using save_generated_content tool
-
-**EXPECTATIONS**: Deliver platform-optimized social media content that includes:
-- Authentic text matching the persona's unique voice and style patterns
-- Strategic hashtag integration appropriate for platform and audience
-- Relevant mentions that enhance engagement and reach
-- Content length and format optimized for the specific platform
-- Natural topic integration that aligns with persona expertise
-
-**NARROWING**:
-- Prioritize persona authenticity above all other considerations - content must feel genuinely written by the persona
-- Apply strict platform constraints: Twitter (280 chars, conversational, hashtags at end), LinkedIn (professional tone, up to 3000 chars, thought leadership, minimal hashtags), Instagram (visual-first captions, emoji-friendly, 3-5 integrated hashtags), Facebook (community-focused, medium length, engaging questions, 1-2 hashtags)
-- Respect all persona guardrails including avoided topics, language preferences, and CTA style limitations
-- Ensure brand voice alignment when brand guidelines exist, but never compromise persona authenticity
-- Generate content that feels natural and conversational, never robotic or templated`,
-  model: process.env.MODEL_ID,
-  tools: [getPostDetailsTool, getCampaignDetailsTool, getPersonaDetailsTool, getBrandDetailsTool, saveGeneratedContentTool]
+const model = new BedrockModel({
+  ...process.env.MODEL_ID && { modelId: process.env.MODEL_ID },
+  stream: false,
+  stopSequences: ['END'],
+  clientConfig: {
+    retryMode: 'standard',
+    maxAttempts: 3
+  }
 });
 
-export const handler = async (event) => {
+const buildContentPrompt = (postData, campaignData, personaData, brandData) => {
+  const { post, postId, campaignId, tenantId } = postData;
+  const { platform, topic, intent, assetRequirements, scheduledAt } = post;
+
+  const platformConstraints = {
+    twitter: 'Twitter (280 chars max, conversational tone, hashtags at end, punchy and engaging)',
+    linkedin: 'LinkedIn (up to 3000 chars, professional tone, thought leadership style, minimal hashtags, focus on insights)',
+    instagram: 'Instagram (visual-first captions, emoji-friendly, 3-5 integrated hashtags, storytelling approach)',
+    facebook: 'Facebook (community-focused, medium length, engaging questions, 1-2 hashtags, conversational)'
+  };
+
+  const intentGuidance = {
+    announce: 'Make an announcement or share news',
+    educate: 'Teach or inform the audience about something valuable',
+    opinion: 'Share a perspective or viewpoint on a topic',
+    invite_discussion: 'Encourage conversation and engagement',
+    social_proof: 'Share success stories, testimonials, or achievements',
+    reminder: 'Remind audience about something important or upcoming'
+  };
+
+  return `Generate authentic social media content for ${personaData.name} (${personaData.role} at ${personaData.company}).
+
+**POST DETAILS**:
+- Platform: ${platformConstraints[platform]}
+- Topic: ${topic}
+- Intent: ${intentGuidance[intent]}
+- Scheduled: ${scheduledAt}
+- Asset Requirements: ${assetRequirements?.imageRequired ? 'Image required' : 'Image optional'}${assetRequirements?.videoRequired ? ', Video required' : ''}
+
+**CAMPAIGN CONTEXT**:
+- Campaign: ${campaignData.name}
+- Objective: ${campaignData.brief.objective}
+- Description: ${campaignData.brief.description}
+${campaignData.brief.primaryCTA ? `- Primary CTA: "${campaignData.brief.primaryCTA.text}" → ${campaignData.brief.primaryCTA.url}` : ''}
+
+**PERSONA VOICE PROFILE**:
+- Name: ${personaData.name}
+- Role: ${personaData.role} at ${personaData.company}
+- Primary Audience: ${personaData.primaryAudience}
+- Voice Traits: ${personaData.voiceTraits.join(', ')}
+- Writing Style: ${personaData.writingHabits.structure} structure, ${personaData.writingHabits.paragraphs} paragraphs, ${personaData.writingHabits.emojis} emoji usage
+- Strong Beliefs: ${personaData.opinions.strongBeliefs.join('; ')}
+- Avoids Topics: ${personaData.opinions.avoidsTopics.join(', ') || 'None specified'}
+- Language to Avoid: ${personaData.language.avoid.join(', ') || 'None specified'}
+- CTA Style: ${personaData.ctaStyle.aggressiveness} aggressiveness
+
+${personaData.inferredStyle ? `**INFERRED STYLE PATTERNS**:
+- Sentence Length: ${personaData.inferredStyle.sentenceLengthPattern.classification} (avg ${personaData.inferredStyle.sentenceLengthPattern.avgWordsPerSentence} words)
+- Structure: ${personaData.inferredStyle.structurePreference}
+- Pacing: ${personaData.inferredStyle.pacing}
+- Tone: ${personaData.inferredStyle.toneTags.join(', ')}
+- Assertiveness: ${personaData.inferredStyle.assertiveness}
+- Hook Style: ${personaData.inferredStyle.hookStyle}
+- Emoji Frequency: ${Math.round(personaData.inferredStyle.emojiFrequency * 100)}%
+- Analogy Usage: ${personaData.inferredStyle.analogyUsage}
+- Anecdote Usage: ${personaData.inferredStyle.anecdoteUsage}` : ''}
+
+${brandData ? `**BRAND GUIDELINES**:
+- Brand: ${brandData.name}
+- Ethos: ${brandData.ethos}
+- Voice Tone: ${Array.isArray(brandData.voiceGuidelines?.tone) ? brandData.voiceGuidelines.tone.join(', ') : brandData.voiceGuidelines?.tone || 'Not specified'}
+- Content Standards: ${brandData.contentStandards?.qualityRequirements?.join(', ') || 'Standard quality'}
+- Restrictions: ${brandData.contentStandards?.restrictions?.join(', ') || 'None specified'}` : ''}
+
+**YOUR TASK**:
+1. Generate authentic social media content that perfectly matches ${personaData.name}'s voice and style
+2. Ensure the content aligns with the ${intent} intent and covers the topic: "${topic}"
+3. Follow ${platform} platform best practices and constraints
+4. Respect all persona guardrails and brand guidelines
+5. Make the content feel genuinely written by ${personaData.name}, not by an AI
+6. Include appropriate hashtags and mentions for the platform
+7. Save the content using the save_generated_content tool with these exact parameters:
+   - postId: "${postId}"
+   - campaignId: "${campaignId}"
+   - tenantId: "${tenantId}"
+   - content: { text: "your generated text", hashtags: ["optional", "hashtags"], mentions: ["optional", "mentions"] }
+
+The content must feel authentic to ${personaData.name}'s voice while achieving the campaign objectives. Focus on persona authenticity above all else.`;
+};
+
+const contentGeneratorAgent = new Agent({
+  systemPrompt: `You are an expert social media content creator specializing in authentic, persona-driven content generation.
+
+Your job is to create social media posts that perfectly match a specific persona's voice, style, and communication patterns while achieving campaign objectives and respecting brand guidelines.
+
+Key principles:
+- Persona authenticity is paramount - content must feel genuinely written by the persona
+- Respect all guardrails including avoided topics, language restrictions, and CTA preferences
+- Follow platform-specific best practices and constraints
+- Integrate topics naturally within the persona's expertise and communication style
+- Generate engaging, platform-optimized content with appropriate hashtags and mentions
+
+You MUST use the save_generated_content tool to save your final content. The tool requires:
+- postId: The ID of the post you're generating content for
+- campaignId: The ID of the campaign this post belongs to
+- tenantId: The tenant ID for data isolation
+- content: Object with text, hashtags (optional), and mentions (optional)`,
+  model,
+  tools: [saveGeneratedContentTool]
+});
+
+export const run = async (tenantId, postData) => {
   try {
-    const detail = event.detail;
-    const { postId, campaignId, tenantId, personaId, platform } = detail;
+    const { campaignId, postId, post } = postData;
+    const { personaId, platform } = post;
 
     console.log('Generating content for post:', { postId, campaignId, personaId, platform });
 
     await ddb.send(new UpdateItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
-        pk: `${tenantId}#${campaignId}#${postId}`,
-        sk: 'post'
+        pk: `${tenantId}#${campaignId}`,
+        sk: `POST#${postId}`
       }),
       UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
       ExpressionAttributeNames: {
@@ -80,40 +142,66 @@ export const handler = async (event) => {
       })
     }));
 
-    const result = await contentGeneratorAgent.run(`Generate social media content for post ${postId} in campaign ${campaignId}.
+    const postResponse = await ddb.send(new GetItemCommand({
+      TableName: process.env.TABLE_NAME,
+      Key: marshall({
+        pk: `${tenantId}#${campaignId}`,
+        sk: `POST#${postId}`
+      })
+    }));
 
-Please:
-1. Get the post details to understand what needs to be created
-2. Get the campaign details for context
-3. Get the persona details to match their voice perfectly
-4. Get brand details if a brand is associated
-5. Generate authentic, engaging content that matches the persona's style
-6. Save the generated content
+    if (!postResponse.Item) {
+      throw new Error(`Post ${postId} not found`);
+    }
 
-The post is for ${platform}. Make sure to follow platform-specific best practices.`);
+    const fullPost = unmarshall(postResponse.Item);
+
+    const [campaign, persona, brand] = await Promise.all([
+      Campaign.findById(tenantId, campaignId),
+      Persona.findById(tenantId, personaId),
+      fullPost.brandId ? Brand.findById(tenantId, fullPost.brandId) : Promise.resolve(null)
+    ]);
+
+    if (!campaign) {
+      throw new Error(`Campaign ${campaignId} not found`);
+    }
+
+    if (!persona) {
+      throw new Error(`Persona ${personaId} not found`);
+    }
+
+    const prompt = buildContentPrompt(
+      { postId, campaignId, post: fullPost, tenantId },
+      campaign,
+      persona,
+      brand
+    );
+
+    const result = await contentGeneratorAgent.invoke(prompt);
 
     console.log('Content generation completed:', result);
 
     return {
-      statusCode: 200,
-      body: JSON.stringify({
-        postId,
-        campaignId,
-        message: 'Content generation completed',
-        result
-      })
+      success: true,
+      content: {
+        text: result.text || '',
+        hashtags: result.hashtags || [],
+        mentions: result.mentions || [],
+        generatedAt: new Date().toISOString()
+      },
+      error: null
     };
   } catch (error) {
     console.error('Content generation error:', error);
 
-    const { postId, campaignId, tenantId } = event.detail;
+    const { postId, campaignId } = postData;
     if (postId && campaignId && tenantId) {
       try {
         await ddb.send(new UpdateItemCommand({
           TableName: process.env.TABLE_NAME,
           Key: marshall({
-            pk: `${tenantId}#${campaignId}#${postId}`,
-            sk: 'post'
+            pk: `${tenantId}#${campaignId}`,
+            sk: `POST#${postId}`
           }),
           UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
           ExpressionAttributeNames: {
@@ -129,6 +217,56 @@ The post is for ${platform}. Make sure to follow platform-specific best practice
       }
     }
 
-    throw error;
+    return {
+      success: false,
+      content: null,
+      error: {
+        code: error.code || 'CONTENT_GENERATION_ERROR',
+        message: error.message,
+        retryable: error.retryable !== false
+      }
+    };
+  }
+};
+
+export const handler = async (event) => {
+  try {
+    const detail = event.detail;
+    const { postId, campaignId, tenantId, personaId, platform } = detail;
+
+    const result = await run(tenantId, {
+      campaignId,
+      postId,
+      post: { personaId, platform, ...detail.post }
+    });
+
+    if (result.success) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          postId,
+          campaignId,
+          message: 'Content generation completed',
+          result: result.content
+        })
+      };
+    } else {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: 'Content generation failed',
+          error: result.error.message
+        })
+      };
+    }
+  } catch (error) {
+    console.error('Content generation handler error:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: 'Content generation failed',
+        error: error.message
+      })
+    };
   }
 };

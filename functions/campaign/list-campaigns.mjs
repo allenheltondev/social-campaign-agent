@@ -64,6 +64,16 @@ export const handler = async (event) => {
 
     campaigns = campaigns.filter(campaign => !campaign.deletedAt);
 
+    campaigns = campaigns.map(campaign => ({
+      id: campaign.id,
+      name: campaign.name,
+      createdAt: campaign.createdAt,
+      status: campaign.status,
+      brief: campaign.brief ? {
+        objective: campaign.brief.objective
+      } : null
+    }));
+
     const result = {
       campaigns,
       count: campaigns.length

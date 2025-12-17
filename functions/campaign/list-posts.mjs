@@ -64,7 +64,6 @@ export const handler = async (event) => {
         content: post.content,
         references: post.references,
         status: post.status,
-        lastError: post.lastError,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
         version: post.version

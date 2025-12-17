@@ -1,4 +1,4 @@
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand, BatchWriteItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, BatchWriteItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
@@ -25,8 +25,8 @@ const CTASchema = z.object({
 
 const DistributionSchema = z.object({
   mode: z.enum(['balanced', 'weighted', 'custom']).default('balanced'),
-  personaWeights: z.record(z.number().min(0).max(1)).nullable(),
-  platformWeights: z.record(z.number().min(0).max(1)).nullable()
+  personaWeights: z.record(z.number().min(0).max(1)).nullable().optional(),
+  platformWeights: z.record(z.number().min(0).max(1)).nullable().optional()
 });
 
 const PostingWindowSchema = z.object({
@@ -118,17 +118,17 @@ export const CampaignSchema = z.object({
     totalPosts: z.number().int().min(0),
     postsPerPlatform: z.record(z.number().int().min(0)),
     postsPerPersona: z.record(z.number().int().min(0))
-  }).nullable(),
-  lastError: ErrorTrackingSchema,
+  }).nullable().optional(),
+  lastError: ErrorTrackingSchema.optional(),
   metadata: z.object({
     source: z.enum(['wizard', 'api', 'import']).default('api'),
     externalRef: z.string().nullable()
   }),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable().optional(),
   version: z.number().int().min(1),
-  planVersion: z.string().nullable()
+  planVersion: z.string().nullable().optional()
 });
 
 export const SocialPostSchema = z.object({
@@ -213,6 +213,28 @@ export const generatePostId = () => {
 };
 
 export class Campaign {
+  static async save(tenantId, campaign) {
+    const now = new Date().toISOString();
+    const campaignData = this.transformToDynamoDB(tenantId, {
+      ...campaign,
+      planSummary: campaign.planSummary || null,
+      lastError: campaign.lastError || null,
+      completedAt: campaign.completedAt || null,
+      planVersion: campaign.planVersion || null,
+      createdAt: campaign.createdAt || now,
+      updatedAt: now,
+      version: campaign.version || 1
+    });
+
+    await ddb.send(new PutItemCommand({
+      TableName: process.env.TABLE_NAME,
+      Item: marshall(campaignData),
+      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
+    }));
+
+    return campaign;
+  }
+
   static async findById(tenantId, campaignId) {
     const response = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
@@ -268,282 +290,135 @@ export class Campaign {
       Persona.findByIds(tenantId, campaign.participants.personaIds)
     ]);
 
-    const mergedConfig = this.mergeConfigurations(brandConfig, campaign, personaConfigs);
-
     return {
       campaign,
       brandConfig,
-      personaConfigs,
-      mergedConfig
+      personaConfigs
     };
   }
 
-  static mergeConfigurations(brandConfig, campaignConfig, personaConfigs) {
-    const cadenceDefaults = Brand.extractCadenceDefaults(brandConfig);
-    const assetDefaults = Brand.extractAssetRequirements(brandConfig);
-    const brandRestrictions = Brand.extractContentRestrictions(brandConfig);
+  static async loadCampaignPosts(tenantId, campaignId) {
+    const response = await ddb.send(new QueryCommand({
+      TableName: process.env.TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
+      ExpressionAttributeValues: marshall({
+        ':pk': `${tenantId}#${campaignId}`,
+        ':skPrefix': 'POST#'
+      })
+    }));
 
-    const mergedConfig = {
-      brandGuidelines: brandConfig || {},
-      platformGuidelines: brandConfig?.platformGuidelines || {
-        enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
-        defaults: {}
-      },
-      audienceProfile: brandConfig?.audienceProfile || {
-        primary: 'professionals',
-        segments: null,
-        excluded: null
-      },
-      cadence: {
-        minPostsPerWeek: campaignConfig.cadenceOverrides?.minPostsPerWeek || cadenceDefaults.minPostsPerWeek,
-        maxPostsPerWeek: campaignConfig.cadenceOverrides?.maxPostsPerWeek || cadenceDefaults.maxPostsPerWeek,
-        maxPostsPerDay: campaignConfig.cadenceOverrides?.maxPostsPerDay || cadenceDefaults.maxPostsPerDay
-      },
-      messaging: {
-        pillars: campaignConfig.messaging?.pillars || brandConfig?.pillars || [
-          { name: 'Brand Awareness', weight: 0.4 },
-          { name: 'Education', weight: 0.3 },
-          { name: 'Engagement', weight: 0.3 }
-        ],
-        requiredInclusions: campaignConfig.messaging?.requiredInclusions || [],
-        campaignAvoidTopics: campaignConfig.messaging?.campaignAvoidTopics || [],
-        brandAvoidTopics: brandRestrictions.avoidTopics
-      },
-      assetRequirements: {
-        forceVisuals: campaignConfig.assetOverrides?.forceVisuals || {},
-        defaultVisualRequirements: {
-          twitter: campaignConfig.assetOverrides?.forceVisuals?.twitter ?? assetDefaults.twitter,
-          linkedin: campaignConfig.assetOverrides?.forceVisuals?.linkedin ?? assetDefaults.linkedin,
-          instagram: campaignConfig.assetOverrides?.forceVisuals?.instagram ?? assetDefaults.instagram,
-          facebook: campaignConfig.assetOverrides?.forceVisuals?.facebook ?? assetDefaults.facebook
-        }
-      },
-      claimsPolicy: brandConfig?.claimsPolicy || {
-        noGuarantees: true,
-        noPerformanceNumbersUnlessProvided: true,
-        requireSourceForStats: true,
-        competitorMentionPolicy: 'avoid'
-      },
-      ctaLibrary: brandConfig?.ctaLibrary || [
-        { type: 'learn_more', text: 'Learn more', defaultUrl: null },
-        { type: 'get_started', text: 'Get started', defaultUrl: null }
-      ],
-      personas: personaConfigs.map(persona =>
-        Persona.mergeEffectiveRestrictions(
-          persona,
-          { campaignAvoidTopics: campaignConfig.messaging?.campaignAvoidTopics },
-          brandRestrictions
-        )
-      ),
-      approvalPolicy: brandConfig?.approvalPolicy || { mode: 'auto_approve', threshold: 0.7 }
-    };
-
-    return mergedConfig;
-  }
-
-  static generatePostPlan(campaignId, tenantId, campaign, mergedConfig) {
-    const startDate = new Date(campaign.schedule.startDate);
-    const endDate = new Date(campaign.schedule.endDate);
-    const durationDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-
-    const totalWeeks = Math.ceil(durationDays / 7);
-    const targetPostsPerWeek = Math.min(
-      mergedConfig.cadence.maxPostsPerWeek,
-      Math.max(mergedConfig.cadence.minPostsPerWeek, campaign.participants.platforms.length * 2)
-    );
-
-    const totalPosts = Math.max(1, Math.floor(totalWeeks * targetPostsPerWeek));
-    const posts = [];
-    const intents = ['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder'];
-    const messagingPillars = mergedConfig.messaging.pillars;
-
-    for (let i = 0; i < totalPosts; i++) {
-      const dayOffset = Math.floor((i / totalPosts) * durationDays);
-      const scheduledDate = new Date(startDate.getTime() + dayOffset * 24 * 60 * 60 * 1000);
-
-      if (this.isBlackoutDate(campaign.schedule.blackoutDates, scheduledDate)) {
-        continue;
-      }
-
-      if (!this.isAllowedDay(campaign.schedule.allowedDaysOfWeek, scheduledDate)) {
-        continue;
-      }
-
-      const personaIndex = i % campaign.participants.personaIds.length;
-      const platformIndex = i % campaign.participants.platforms.length;
-      const persona = mergedConfig.personas[personaIndex];
-      const platform = campaign.participants.platforms[platformIndex];
-
-      const pillarIndex = i % messagingPillars.length;
-      const selectedPillar = messagingPillars[pillarIndex];
-      const intent = intents[i % intents.length];
-
-      const topic = `${selectedPillar.name}: ${campaign.brief.description} - ${intent} content for ${platform}`;
-
-      const requiresImage = mergedConfig.assetRequirements.defaultVisualRequirements[platform] ||
-                           mergedConfig.assetRequirements.forceVisuals[platform] || false;
-
-      const post = {
-        personaId: persona.personaId,
-        platform: platform,
-        scheduledDate: scheduledDate.toISOString(),
-        topic: topic,
-        intent: intent,
-        assetRequirements: {
-          imageRequired: requiresImage,
-          imageDescription: requiresImage ? `Visual content for ${topic} on ${platform}` : null,
-          videoRequired: false,
-          videoDescription: null
-        },
-        references: campaign.brief.primaryCTA ? [{
-          type: 'url',
-          value: campaign.brief.primaryCTA.url || '#'
-        }] : null,
-        messagingPillar: selectedPillar.name,
-        personaConstraints: persona.effectiveRestrictions
-      };
-
-      posts.push(post);
+    if (!response.Items || response.Items.length === 0) {
+      return [];
     }
 
-    const planSummary = {
-      totalPosts: posts.length,
-      postsPerPlatform: campaign.participants.platforms.reduce((acc, platform) => {
-        acc[platform] = posts.filter(p => p.platform === platform).length;
-        return acc;
-      }, {}),
-      postsPerPersona: campaign.participants.personaIds.reduce((acc, personaId) => {
-        acc[personaId] = posts.filter(p => p.personaId === personaId).length;
-        return acc;
-      }, {})
-    };
-
-    const planVersion = this.generatePlanVersion(campaign, mergedConfig);
-
-    return {
-      posts,
-      planSummary,
-      planVersion
-    };
+    return response.Items.map(item => {
+      const post = unmarshall(item);
+      delete post.pk;
+      delete post.sk;
+      delete post.GSI1PK;
+      delete post.GSI1SK;
+      delete post.GSI2PK;
+      delete post.GSI2SK;
+      return post;
+    });
   }
 
-  static generatePlanVersion(campaign, mergedConfig) {
+  static generatePlanVersion(campaign, context) {
     return crypto.createHash('sha256')
       .update(JSON.stringify({
         brief: campaign.brief,
         participants: campaign.participants,
         schedule: campaign.schedule,
-        cadenceOverrides: mergedConfig.cadence,
-        messaging: mergedConfig.messaging,
-        assetOverrides: mergedConfig.assetRequirements
+        cadence: context.cadence,
+        messaging: context.messaging,
+        assetRequirements: context.assetRequirements
       }))
       .digest('hex')
       .substring(0, 16);
   }
 
-  static isBlackoutDate(blackoutDates, scheduledDate) {
-    return blackoutDates?.some(blackout =>
-      new Date(blackout).toDateString() === scheduledDate.toDateString()
-    );
-  }
-
-  static isAllowedDay(allowedDaysOfWeek, scheduledDate) {
-    const dayOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][scheduledDate.getDay()];
-    return allowedDaysOfWeek.includes(dayOfWeek);
-  }
-
   static async createSocialPosts(campaignId, tenantId, planVersion, posts) {
     const createdPosts = [];
     const now = new Date().toISOString();
+    try {
+      const batchSize = 25;
+      for (let i = 0; i < posts.length; i += batchSize) {
+        const batch = posts.slice(i, i + batchSize);
+        const writeRequests = [];
 
-    const batchSize = 25;
-    for (let i = 0; i < posts.length; i += batchSize) {
-      const batch = posts.slice(i, i + batchSize);
-      const writeRequests = [];
+        for (const post of batch) {
+          const postId = generatePostId();
+          const postItem = {
+            id: postId,
+            campaignId,
+            tenantId,
+            personaId: post.personaId,
+            platform: post.platform,
+            scheduledAt: post.scheduledDate,
+            topic: post.topic,
+            intent: post.intent,
+            assetRequirements: post.assetRequirements,
+            references: post.references,
+            status: 'planned',
+            createdAt: now,
+            updatedAt: now,
+            version: 1
+          };
 
-      for (const post of batch) {
-        const postId = generatePostId();
-        const postItem = {
-          postId,
-          campaignId,
-          tenantId,
-          personaId: post.personaId,
-          platform: post.platform,
-          scheduledAt: post.scheduledDate,
-          topic: post.topic,
-          intent: post.intent,
-          assetRequirements: post.assetRequirements,
-          references: post.references,
-          status: 'planned',
-          createdAt: now,
-          updatedAt: now,
-          version: 1
-        };
+          writeRequests.push({
+            PutRequest: {
+              Item: marshall({
+                pk: `${tenantId}#${campaignId}`,
+                sk: `POST#${postId}`,
+                GSI1PK: `${tenantId}#${campaignId}`,
+                GSI1SK: `POST#${post.platform}#${post.scheduledDate}`,
+                GSI2PK: `${tenantId}#${post.personaId}`,
+                GSI2SK: `POST#${campaignId}#${post.scheduledDate}`,
+                ...postItem
+              })
+            }
+          });
 
-        writeRequests.push({
-          PutRequest: {
-            Item: marshall({
-              pk: `${tenantId}#${campaignId}`,
-              sk: `POST#${postId}`,
-              GSI1PK: `${tenantId}#${campaignId}`,
-              GSI1SK: `POST#${post.platform}#${post.scheduledDate}`,
-              GSI2PK: `${tenantId}#${post.personaId}`,
-              GSI2SK: `POST#${campaignId}#${post.scheduledDate}`,
-              ...postItem
-            })
-          }
-        });
+          createdPosts.push({
+            postId,
+            personaId: post.personaId,
+            platform: post.platform,
+            scheduledAt: post.scheduledDate,
+            intent: post.intent,
+            topic: post.topic
+          });
+        }
 
-        createdPosts.push({
-          postId,
-          personaId: post.personaId,
-          platform: post.platform,
-          scheduledAt: post.scheduledDate,
-          intent: post.intent,
-          topic: post.topic
-        });
+        if (writeRequests.length > 0) {
+          await ddb.send(new BatchWriteItemCommand({
+            RequestItems: {
+              [process.env.TABLE_NAME]: writeRequests
+            }
+          }));
+        }
       }
 
-      if (writeRequests.length > 0) {
-        await ddb.send(new BatchWriteItemCommand({
-          RequestItems: {
-            [process.env.TABLE_NAME]: writeRequests
-          }
-        }));
-      }
-    }
-
-    await this.publishPostCreatedEvents(createdPosts, campaignId, tenantId, planVersion);
-
-    return {
-      success: true,
-      postsCreated: createdPosts.length,
-      posts: createdPosts
-    };
-  }
-
-  static async publishPostCreatedEvents(createdPosts, campaignId, tenantId, planVersion) {
-    const eventEntries = createdPosts.map(post => ({
-      Source: 'campaign-planner',
-      DetailType: 'Social Post Created',
-      Detail: JSON.stringify({
-        postId: post.postId,
+      return {
+        success: true,
+        postsCreated: createdPosts.length,
+        posts: createdPosts
+      };
+    } catch (err) {
+      console.error('Failed to create social posts', {
         campaignId,
         tenantId,
-        personaId: post.personaId,
-        platform: post.platform,
-        scheduledAt: post.scheduledAt,
-        intent: post.intent,
-        planVersion
-      }),
-      EventBusName: process.env.EVENT_BUS_NAME || 'default'
-    }));
-
-    for (let i = 0; i < eventEntries.length; i += 10) {
-      const eventBatch = eventEntries.slice(i, i + 10);
-      await eventBridge.send(new PutEventsCommand({
-        Entries: eventBatch
-      }));
+        planVersion,
+        totalPosts: posts.length,
+        postsCreatedBeforeError: createdPosts.length,
+        errorName: err.name,
+        errorMessage: err.message,
+        errorCode: err.$metadata?.httpStatusCode
+      });
+      return {
+        success: false,
+        error: err.message,
+        postsCreated: createdPosts.length
+      };
     }
   }
 

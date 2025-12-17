@@ -1,74 +1,69 @@
 import { tool } from '@strands-agents/sdk';
 import { z } from 'zod';
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
-import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { Campaign } from '../../models/campaign.mjs';
 
 const ddb = new DynamoDBClient();
-const eventBridge = new EventBridgeClient();
 
 export const createSocialPostsTool = tool({
   name: 'create_social_posts',
-  description: 'Create multiple social media posts for a campaign with enhanced metadata including intent, references, and asset requirements.',
-  schema: z.object({
-    campaignId: z.string().describe('The campaign ID these posts belong to'),
-    tenantId: z.string().describe('The tenant ID for isolation'),
-    planVersion: z.string().describe('The plan version hash for consistency checking'),
+  description: 'Create multiple social media posts for a campaign. Call this tool once with all posts in the posts array.',
+  inputSchema: z.object({
+    campaignId: z.string(),
+    tenantId: z.string(),
+    planVersion: z.string(),
     posts: z.array(z.object({
-      personaId: z.string().describe('The ID of the persona who will create this post'),
-      platform: z.enum(['twitter', 'linkedin', 'instagram', 'facebook']).describe('The social media platform for this post'),
-      scheduledDate: z.string().describe('ISO 8601 date string for when this post should be published'),
-      topic: z.string().describe('The topic or subject matter for this post'),
-      intent: z.enum(['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder']).describe('The intent of this post'),
+      personaId: z.string(),
+      platform: z.enum(['twitter', 'linkedin', 'instagram', 'facebook']),
+      scheduledDate: z.string(),
+      topic: z.string(),
+      intent: z.enum(['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder']),
       assetRequirements: z.object({
-        imageRequired: z.boolean().describe('Whether an image is required for this post'),
-        imageDescription: z.string().nullable().describe('Description of the required image'),
-        videoRequired: z.boolean().describe('Whether a video is required for this post'),
-        videoDescription: z.string().nullable().describe('Description of the required video')
-      }).describe('Asset requirements for this post'),
+        imageRequired: z.boolean(),
+        imageDescription: z.string().nullable(),
+        videoRequired: z.boolean(),
+        videoDescription: z.string().nullable()
+      }),
       references: z.array(z.object({
-        type: z.enum(['url', 'assetId']).describe('Type of reference'),
-        value: z.string().describe('Reference value (URL or asset ID)')
-      })).nullable().describe('References to include in the post'),
-      messagingPillar: z.string().optional().describe('The messaging pillar this post supports'),
-      personaConstraints: z.any().optional().describe('Persona-specific constraints and restrictions')
-    })).min(1).describe('Array of social posts to create')
+        type: z.enum(['url', 'assetId']),
+        value: z.string()
+      })).nullable().optional(),
+      messagingPillar: z.string().optional()
+    })).min(1)
   }),
-  handler: async (input) => {
-    const { campaignId, tenantId, planVersion, posts } = input;
-    return await Campaign.createSocialPosts(campaignId, tenantId, planVersion, posts);
-  }
-});
+  callback: async (input) => {
+    try {
+      const { campaignId, tenantId, planVersion, posts } = input;
+      console.log('Creating social posts:', { campaignId, tenantId, planVersion, postCount: posts.length });
 
-export const updateCampaignStatusTool = tool({
-  name: 'update_campaign_status',
-  description: 'Update the campaign status, plan summary, and plan version after creating all posts.',
-  schema: z.object({
-    campaignId: z.string().describe('The campaign ID to update'),
-    tenantId: z.string().describe('The tenant ID for isolation'),
-    status: z.enum(['planning', 'generating', 'completed', 'failed']).describe('The new campaign status'),
-    planSummary: z.object({
-      totalPosts: z.number().int().describe('Total number of posts in the campaign'),
-      postsPerPlatform: z.record(z.number().int()).describe('Number of posts per platform'),
-      postsPerPersona: z.record(z.number().int()).describe('Number of posts per persona')
-    }).describe('Summary of the campaign plan'),
-    planVersion: z.string().describe('The plan version hash for consistency tracking')
-  }),
-  handler: async (input) => {
-    const { campaignId, tenantId, status, planSummary, planVersion } = input;
-    return await Campaign.updateStatus(campaignId, tenantId, status, planSummary, planVersion);
+      const result = await Campaign.createSocialPosts(campaignId, tenantId, planVersion, posts);
+
+      console.log('Social posts created:', result);
+
+      return result;
+    } catch (error) {
+      console.error('Tool execution error:', {
+        message: error.message,
+        stack: error.stack
+      });
+
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 });
 
 export const getPersonaDetailsTool = tool({
   name: 'get_persona_details',
   description: 'Retrieve persona details including voice traits, writing habits, opinions, and inferred style.',
-  schema: z.object({
+  inputSchema: z.object({
     personaId: z.string().describe('The persona ID to retrieve'),
     tenantId: z.string().describe('The tenant ID for isolation')
   }),
-  handler: async (input) => {
+  callback: async (input) => {
     const { personaId, tenantId } = input;
 
     const result = await ddb.send(new GetItemCommand({
@@ -102,11 +97,11 @@ export const getPersonaDetailsTool = tool({
 export const getBrandDetailsTool = tool({
   name: 'get_brand_details',
   description: 'Retrieve brand guidelines and standards if a brand is associated with the post.',
-  schema: z.object({
+  inputSchema: z.object({
     brandId: z.string().describe('The brand ID to retrieve'),
     tenantId: z.string().describe('The tenant ID for isolation')
   }),
-  handler: async (input) => {
+  callback: async (input) => {
     const { brandId, tenantId } = input;
 
     const result = await ddb.send(new GetItemCommand({
@@ -135,19 +130,19 @@ export const getBrandDetailsTool = tool({
 export const getPostDetailsTool = tool({
   name: 'get_post_details',
   description: 'Retrieve social post details including topic, platform, and asset requirements.',
-  schema: z.object({
+  inputSchema: z.object({
     postId: z.string().describe('The post ID to retrieve'),
     campaignId: z.string().describe('The campaign ID this post belongs to'),
     tenantId: z.string().describe('The tenant ID for isolation')
   }),
-  handler: async (input) => {
+  callback: async (input) => {
     const { postId, campaignId, tenantId } = input;
 
     const result = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
-        pk: `${tenantId}#${campaignId}#${postId}`,
-        sk: 'post'
+        pk: `${tenantId}#${campaignId}`,
+        sk: `POST#${postId}`
       })
     }));
 
@@ -169,11 +164,11 @@ export const getPostDetailsTool = tool({
 export const getCampaignDetailsTool = tool({
   name: 'get_campaign_details',
   description: 'Retrieve campaign details including description and brand ID.',
-  schema: z.object({
+  inputSchema: z.object({
     campaignId: z.string().describe('The campaign ID to retrieve'),
     tenantId: z.string().describe('The tenant ID for isolation')
   }),
-  handler: async (input) => {
+  callback: async (input) => {
     const { campaignId, tenantId } = input;
 
     const result = await ddb.send(new GetItemCommand({
@@ -199,7 +194,7 @@ export const getCampaignDetailsTool = tool({
 export const saveGeneratedContentTool = tool({
   name: 'save_generated_content',
   description: 'Save the generated social media content to the post.',
-  schema: z.object({
+  inputSchema: z.object({
     postId: z.string().describe('The post ID to update'),
     campaignId: z.string().describe('The campaign ID this post belongs to'),
     tenantId: z.string().describe('The tenant ID for isolation'),
@@ -209,36 +204,52 @@ export const saveGeneratedContentTool = tool({
       mentions: z.array(z.string()).optional().describe('Array of account mentions to include')
     }).describe('The generated content for the post')
   }),
-  handler: async (input) => {
-    const { postId, campaignId, tenantId, content } = input;
-    const now = new Date().toISOString();
+  callback: async (input) => {
+    try {
+      const { postId, campaignId, tenantId, content } = input;
+      const now = new Date().toISOString();
 
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${campaignId}#${postId}`,
-        sk: 'post'
-      }),
-      UpdateExpression: 'SET content = :content, #status = :status, updatedAt = :updatedAt, version = version + :inc',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: marshall({
-        ':content': {
-          ...content,
-          generatedAt: now
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${campaignId}`,
+          sk: `POST#${postId}`
+        }),
+        UpdateExpression: 'SET content = :content, #status = :status, updatedAt = :updatedAt, version = version + :inc',
+        ExpressionAttributeNames: {
+          '#status': 'status'
         },
-        ':status': 'completed',
-        ':updatedAt': now,
-        ':inc': 1
-      })
-    }));
+        ExpressionAttributeValues: marshall({
+          ':content': {
+            ...content,
+            generatedAt: now
+          },
+          ':status': 'completed',
+          ':updatedAt': now,
+          ':inc': 1
+        })
+      }));
 
-    return {
-      success: true,
-      postId,
-      status: 'completed'
-    };
+      return {
+        success: true,
+        postId,
+        status: 'completed'
+      };
+    } catch (error) {
+      console.error('Failed to save generated content', {
+        postId: input.postId,
+        campaignId: input.campaignId,
+        tenantId: input.tenantId,
+        errorName: error.name,
+        errorMessage: error.message,
+        errorCode: error.$metadata?.httpStatusCode
+      });
+      return {
+        success: false,
+        postId: input.postId,
+        error: error.message
+      };
+    }
   }
 });
 
@@ -282,12 +293,12 @@ const styleInferenceOutputSchema = z.object({
 export const saveStyleAnalysisTool = tool({
   name: 'save_style_analysis',
   description: 'Save the inferred style analysis to DynamoDB for the specified persona.',
-  schema: z.object({
+  inputSchema: z.object({
     personaId: z.string().describe('The persona ID to update'),
     tenantId: z.string().describe('The tenant ID for isolation'),
     styleAnalysis: styleInferenceOutputSchema.describe('The comprehensive style analysis data to save')
   }),
-  handler: async (input) => {
+  callback: async (input) => {
     try {
       const { personaId, tenantId, styleAnalysis } = input;
 
@@ -312,7 +323,7 @@ export const saveStyleAnalysisTool = tool({
         ReturnValues: 'UPDATED_NEW'
       };
 
-      const result = await ddb.send(new UpdateItemCommand(updateParams));
+      await ddb.send(new UpdateItemCommand(updateParams));
 
       return `Successfully saved style analysis for persona ${personaId}.`;
 

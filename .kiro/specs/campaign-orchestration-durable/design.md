@@ -275,8 +275,7 @@ The durable function maintains execution state through checkpoints:
     // Complete campaign configuration
   },
   brandConfig: 'object | null',
-  personaConfigs: ['object'],
-  mergedConfig: 'object'
+  personaConfigs: ['object']
 }
 ```
 
