@@ -20,7 +20,7 @@ const inputSchema = z.object({
       primaryCTA: z.object({
         type: z.string().min(1),
         text: z.string().min(1),
-        url: z.string().url().nullable()
+        url: z.url().nullable()
       }).nullable()
     }),
     participants: z.object({
@@ -34,10 +34,10 @@ const inputSchema = z.object({
     }),
     schedule: z.object({
       timezone: z.string().min(1),
-      startDate: z.string().datetime(),
-      endDate: z.string().datetime(),
+      startDate: z.iso.datetime(),
+      endDate: z.iso.datetime(),
       allowedDaysOfWeek: z.array(z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])).min(1).max(7),
-      blackoutDates: z.array(z.string().datetime()).nullable(),
+      blackoutDates: z.array(z.iso.datetime()).nullable(),
       postingWindows: z.array(z.object({
         start: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
         end: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
@@ -99,7 +99,6 @@ export const handler = withDurableExecution(
             assetOverrides: campaign.assetOverrides || null,
             status: 'planning',
             metadata: campaign.metadata || { source: 'api', externalRef: null },
-            version: 1,
           });
           return true;
         } catch (err) {
@@ -224,7 +223,7 @@ export const handler = withDurableExecution(
         }
       );
       if (!contentResults) contentResults = [];
-
+      console.log(JSON.stringify(contentResults));
       const successfulPosts = contentResults.filter(result => result.success);
       const failedPosts = contentResults.filter(result => !result.success);
 
@@ -274,7 +273,7 @@ export const handler = withDurableExecution(
         });
       }
 
-      await Campaign.updateStatus(campaign.id, tenantId, finalStatus);
+      await Campaign.update(tenantId, campaign.id, { status: finalStatus });
 
       await ddb.send(new UpdateItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -304,7 +303,16 @@ export const handler = withDurableExecution(
 
       if (event.tenantId && event.campaign?.id) {
         try {
-          await Campaign.markAsFailed(event.campaign.id, event.tenantId, error);
+          const now = new Date().toISOString();
+          await Campaign.update(event.tenantId, event.campaign.id, {
+            status: 'failed',
+            lastError: {
+              code: 'CAMPAIGN_PLANNING_FAILED',
+              message: error.message || 'Campaign planning workflow failed',
+              at: now,
+              retryable: false
+            }
+          });
         } catch (updateError) {
           console.error('Failed to update campaign status after error', updateError);
         }

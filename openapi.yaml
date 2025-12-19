@@ -647,7 +647,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [logo, image, document, video, other]
+            enum: [logo, template, image, document]
           description: Filter assets by type
       responses:
         200:
@@ -897,6 +897,60 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+    put:
+      summary: Update campaign
+      description: Updates an existing campaign with new information
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCampaignRequest"
+      responses:
+        200:
+          description: Campaign updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateCampaignFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    delete:
+      summary: Delete campaign
+      description: Soft deletes a campaign by marking it as inactive
+      tags:
+        - Campaigns
+      responses:
+        204:
+          description: Campaign deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteCampaignFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
   /campaigns/{campaignId}/posts:
     parameters:
       - name: campaignId
@@ -932,6 +986,57 @@ paths:
       x-amazon-apigateway-integration:
         uri:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignPostsFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /campaigns/{campaignId}/approve:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+    post:
+      summary: Approve campaign
+      description: Approves a campaign for publication
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approved:
+                  type: boolean
+                  description: Whether the campaign is approved
+                notes:
+                  type: string
+                  description: Optional approval notes
+      responses:
+        200:
+          description: Campaign approval processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Campaign approval processed"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApprovalCallbackFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
 
@@ -1995,6 +2100,50 @@ components:
           format: date-time
         version:
           type: integer
+
+    UpdateCampaignRequest:
+      type: object
+      description: All fields are optional for updates
+      properties:
+        description:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          description: Campaign description and goals
+        personaIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Array of persona IDs to participate in the campaign
+        platforms:
+          type: array
+          items:
+            type: string
+            enum: [twitter, linkedin, instagram, facebook]
+          minItems: 1
+          description: Target social media platforms
+        brandId:
+          type: string
+          description: Optional brand ID for brand-specific guidelines
+        duration:
+          type: object
+          description: Campaign duration specification
+          properties:
+            startDate:
+              type: string
+              format: date-time
+              description: Campaign start date (ISO 8601)
+            endDate:
+              type: string
+              format: date-time
+              description: Campaign end date (ISO 8601)
+            numberOfDays:
+              type: integer
+              minimum: 1
+              maximum: 90
+              description: Number of days for campaign (alternative to date range)
 
     SocialPostResponse:
       type: object

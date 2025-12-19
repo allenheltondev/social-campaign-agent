@@ -1,5 +1,6 @@
 import { Agent, BedrockModel } from '@strands-agents/sdk';
 import { Campaign } from '../../models/campaign.mjs';
+import { SocialPost } from '../../models/social-post.mjs';
 import { createSocialPostsTool } from './tools.mjs';
 import crypto from 'crypto';
 
@@ -30,17 +31,7 @@ const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, person
     facebook: assetOverrides.facebook ?? assetDefaults.facebook ?? true
   };
 
-  const planVersion = crypto.createHash('sha256')
-    .update(JSON.stringify({
-      brief: campaign.brief,
-      participants: campaign.participants,
-      schedule: campaign.schedule,
-      cadence,
-      messaging: messagingPillars,
-      assetRequirements
-    }))
-    .digest('hex')
-    .substring(0, 16);
+
 
   return `Plan and create social media posts for Campaign ${campaignId}
 
@@ -103,7 +94,6 @@ ${Object.entries(assetRequirements).map(([platform, required]) => `- ${platform}
 5. Call create_social_posts tool ONCE with all posts:
    - campaignId: "${campaignId}"
    - tenantId: "${tenantId}"
-   - planVersion: "${planVersion}"
    - posts: Array of all post objects you created
 
 CRITICAL: Use ONLY the exact persona IDs listed above. Do not make up or generate new persona IDs.
@@ -163,7 +153,7 @@ export const run = async (tenantId, campaignData) => {
     const agentResponse = await plannerAgent.invoke(prompt);
     console.log('Agent response:', JSON.stringify(agentResponse, null, 2));
 
-    const posts = await Campaign.loadCampaignPosts(tenantId, campaignId);
+    const { posts } = await SocialPost.findByCampaign(tenantId, campaignId);
 
     if (!posts || posts.length === 0) {
       throw new Error('No posts were created by the campaign planner');
@@ -179,7 +169,16 @@ export const run = async (tenantId, campaignData) => {
 
     if (campaignData?.campaignId && tenantId) {
       try {
-        await Campaign.markAsFailed(campaignData.campaignId, tenantId, error);
+        const now = new Date().toISOString();
+        await Campaign.update(tenantId, campaignData.campaignId, {
+          status: 'failed',
+          lastError: {
+            code: 'CAMPAIGN_PLANNING_FAILED',
+            message: error.message || 'Campaign planning workflow failed',
+            at: now,
+            retryable: false
+          }
+        });
       } catch (updateError) {
         console.error('Failed to update campaign status after planning error:', updateError);
       }

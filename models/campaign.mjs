@@ -1,26 +1,22 @@
-import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, BatchWriteItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
-import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
 import { Brand } from './brand.mjs';
 import { Persona } from './persona.mjs';
-import crypto from 'crypto';
 
 const ddb = new DynamoDBClient();
-const eventBridge = new EventBridgeClient();
 
 const ObjectiveSchema = z.enum(['awareness', 'education', 'conversion', 'event', 'launch']);
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
 const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review']);
 const DayOfWeekSchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
-const IntentSchema = z.enum(['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder']);
-const PostStatusSchema = z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review']);
+
 
 const CTASchema = z.object({
   type: z.string().min(1),
   text: z.string().min(1),
-  url: z.string().url().nullable()
+  url: z.url().nullable()
 }).nullable();
 
 const DistributionSchema = z.object({
@@ -36,10 +32,10 @@ const PostingWindowSchema = z.object({
 
 const ScheduleSchema = z.object({
   timezone: z.string().min(1),
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
+  startDate: z.iso.datetime(),
+  endDate: z.iso.datetime(),
   allowedDaysOfWeek: z.array(DayOfWeekSchema).min(1).max(7),
-  blackoutDates: z.array(z.string().datetime()).nullable(),
+  blackoutDates: z.array(z.iso.datetime()).nullable(),
   postingWindows: z.array(PostingWindowSchema).nullable()
 }).refine(
   (data) => new Date(data.endDate) > new Date(data.startDate),
@@ -84,7 +80,7 @@ const AssetOverridesSchema = z.object({
 const ErrorTrackingSchema = z.object({
   code: z.string(),
   message: z.string(),
-  at: z.string().datetime(),
+  at: z.iso.datetime(),
   retryable: z.boolean()
 }).nullable();
 
@@ -124,44 +120,12 @@ export const CampaignSchema = z.object({
     source: z.enum(['wizard', 'api', 'import']).default('api'),
     externalRef: z.string().nullable()
   }),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable().optional(),
-  version: z.number().int().min(1),
-  planVersion: z.string().nullable().optional()
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable().optional()
 });
 
-export const SocialPostSchema = z.object({
-  postId: z.string(),
-  campaignId: z.string(),
-  tenantId: z.string(),
-  personaId: z.string(),
-  platform: PlatformSchema,
-  scheduledAt: z.string().datetime(),
-  topic: z.string().min(1).max(500),
-  intent: IntentSchema,
-  assetRequirements: z.object({
-    imageRequired: z.boolean(),
-    imageDescription: z.string().optional(),
-    videoRequired: z.boolean(),
-    videoDescription: z.string().optional()
-  }).optional(),
-  content: z.object({
-    text: z.string(),
-    hashtags: z.array(z.string()).optional(),
-    mentions: z.array(z.string()).optional(),
-    generatedAt: z.string().datetime()
-  }).optional(),
-  references: z.array(z.object({
-    type: z.enum(['url', 'assetId']),
-    value: z.string()
-  })).optional(),
-  status: PostStatusSchema,
-  lastError: ErrorTrackingSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  version: z.number().int().min(1)
-});
+export const CampaignDTOSchema = CampaignSchema.omit({ tenantId: true });
 
 export const CreateCampaignRequestSchema = z.object({
   name: z.string().min(1).max(200),
@@ -198,61 +162,111 @@ export const validateRequestBody = (schema, body) => {
     return schema.parse(parsed);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Validation error: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      const validationErrors = (error.errors || []).map(e => ({
+        field: (e.path || []).join('.'),
+        message: e.message || 'Validation failed',
+        code: e.code || 'invalid'
+      }));
+      const errorMessage = `Validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+      const validationError = new Error(errorMessage);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: validationErrors };
+      throw validationError;
     }
-    throw new Error('Invalid JSON in request body');
+    const parseError = new Error('Invalid JSON in request body');
+    parseError.name = 'ParseError';
+    throw parseError;
   }
 };
 
 export const generateCampaignId = () => {
-  return `campaign_${ulid()}`;
-};
-
-export const generatePostId = () => {
-  return `post_${ulid()}`;
+  return ulid();
 };
 
 export class Campaign {
+  static validateEntity(campaign) {
+    try {
+      return CampaignSchema.parse(campaign);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Campaign validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
+    }
+  }
+
   static async save(tenantId, campaign) {
-    const now = new Date().toISOString();
-    const campaignData = this.transformToDynamoDB(tenantId, {
-      ...campaign,
-      planSummary: campaign.planSummary || null,
-      lastError: campaign.lastError || null,
-      completedAt: campaign.completedAt || null,
-      planVersion: campaign.planVersion || null,
-      createdAt: campaign.createdAt || now,
-      updatedAt: now,
-      version: campaign.version || 1
-    });
+    try {
+      const now = new Date().toISOString();
+      const campaignWithDefaults = {
+        ...campaign,
+        tenantId,
+        planSummary: campaign.planSummary || null,
+        lastError: campaign.lastError || null,
+        completedAt: campaign.completedAt || null,
+        createdAt: campaign.createdAt || now,
+        updatedAt: now
+      };
 
-    await ddb.send(new PutItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: marshall(campaignData),
-      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
-    }));
+      const validatedCampaign = this.validateEntity(campaignWithDefaults);
+      const campaignData = this._transformToDynamoDB(tenantId, validatedCampaign);
 
-    return campaign;
+      await ddb.send(new PutItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Item: marshall(campaignData),
+        ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
+      }));
+
+      return this._transformFromDynamoDB(campaignData);
+    } catch (error) {
+      console.error('Campaign save failed', {
+        campaignId: campaign.id,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to save campaign');
+    }
   }
 
   static async findById(tenantId, campaignId) {
-    const response = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${campaignId}`,
-        sk: 'campaign'
-      })
-    }));
+    try {
+      const response = await ddb.send(new GetItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${campaignId}`,
+          sk: 'campaign'
+        })
+      }));
 
-    if (!response.Item) {
-      return null;
+      if (!response.Item) {
+        return null;
+      }
+
+      const rawCampaign = unmarshall(response.Item);
+      return this._transformFromDynamoDB(rawCampaign);
+    } catch (error) {
+      console.error('Campaign retrieval failed', {
+        campaignId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to retrieve campaign');
     }
-
-    const rawCampaign = unmarshall(response.Item);
-    return this.transformFromDynamoDB(rawCampaign);
   }
 
-  static transformFromDynamoDB(rawCampaign) {
+  static _transformFromDynamoDB(rawCampaign) {
     const cleanCampaign = { ...rawCampaign };
 
     delete cleanCampaign.pk;
@@ -261,11 +275,14 @@ export class Campaign {
     delete cleanCampaign.GSI1SK;
     delete cleanCampaign.GSI2PK;
     delete cleanCampaign.GSI2SK;
+    delete cleanCampaign.tenantId;
 
-    return CampaignSchema.parse(cleanCampaign);
+    cleanCampaign.id = cleanCampaign.id || rawCampaign.pk?.split('#')[1];
+
+    return CampaignDTOSchema.parse(cleanCampaign);
   }
 
-  static transformToDynamoDB(tenantId, campaign) {
+  static _transformToDynamoDB(tenantId, campaign) {
     const now = new Date().toISOString();
 
     return {
@@ -297,239 +314,142 @@ export class Campaign {
     };
   }
 
-  static async loadCampaignPosts(tenantId, campaignId) {
-    const response = await ddb.send(new QueryCommand({
-      TableName: process.env.TABLE_NAME,
-      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
-      ExpressionAttributeValues: marshall({
-        ':pk': `${tenantId}#${campaignId}`,
-        ':skPrefix': 'POST#'
-      })
-    }));
-
-    if (!response.Items || response.Items.length === 0) {
-      return [];
-    }
-
-    return response.Items.map(item => {
-      const post = unmarshall(item);
-      delete post.pk;
-      delete post.sk;
-      delete post.GSI1PK;
-      delete post.GSI1SK;
-      delete post.GSI2PK;
-      delete post.GSI2SK;
-      return post;
-    });
-  }
-
-  static generatePlanVersion(campaign, context) {
-    return crypto.createHash('sha256')
-      .update(JSON.stringify({
-        brief: campaign.brief,
-        participants: campaign.participants,
-        schedule: campaign.schedule,
-        cadence: context.cadence,
-        messaging: context.messaging,
-        assetRequirements: context.assetRequirements
-      }))
-      .digest('hex')
-      .substring(0, 16);
-  }
-
-  static async createSocialPosts(campaignId, tenantId, planVersion, posts) {
-    const createdPosts = [];
-    const now = new Date().toISOString();
+  static validateUpdateData(updateData) {
     try {
-      const batchSize = 25;
-      for (let i = 0; i < posts.length; i += batchSize) {
-        const batch = posts.slice(i, i + batchSize);
-        const writeRequests = [];
+      const updateSchema = CampaignSchema.omit({
+        id: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial();
+      return updateSchema.parse(updateData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Campaign update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
+    }
+  }
 
-        for (const post of batch) {
-          const postId = generatePostId();
-          const postItem = {
-            id: postId,
-            campaignId,
-            tenantId,
-            personaId: post.personaId,
-            platform: post.platform,
-            scheduledAt: post.scheduledDate,
-            topic: post.topic,
-            intent: post.intent,
-            assetRequirements: post.assetRequirements,
-            references: post.references,
-            status: 'planned',
-            createdAt: now,
-            updatedAt: now,
-            version: 1
-          };
+  static async update(tenantId, campaignId, updateData) {
+    try {
+      const validatedUpdateData = this.validateUpdateData(updateData);
+      const now = new Date().toISOString();
+      const updateDataWithTimestamp = { ...validatedUpdateData, updatedAt: now };
 
-          writeRequests.push({
-            PutRequest: {
-              Item: marshall({
-                pk: `${tenantId}#${campaignId}`,
-                sk: `POST#${postId}`,
-                GSI1PK: `${tenantId}#${campaignId}`,
-                GSI1SK: `POST#${post.platform}#${post.scheduledDate}`,
-                GSI2PK: `${tenantId}#${post.personaId}`,
-                GSI2SK: `POST#${campaignId}#${post.scheduledDate}`,
-                ...postItem
-              })
-            }
-          });
+      const updateExpressionParts = [];
+      const expressionAttributeNames = {};
+      const expressionAttributeValues = {};
 
-          createdPosts.push({
-            postId,
-            personaId: post.personaId,
-            platform: post.platform,
-            scheduledAt: post.scheduledDate,
-            intent: post.intent,
-            topic: post.topic
-          });
-        }
+      Object.keys(updateDataWithTimestamp).forEach((key, index) => {
+        const attributeName = `#attr${index}`;
+        const attributeValue = `:val${index}`;
 
-        if (writeRequests.length > 0) {
-          await ddb.send(new BatchWriteItemCommand({
-            RequestItems: {
-              [process.env.TABLE_NAME]: writeRequests
-            }
-          }));
+        updateExpressionParts.push(`${attributeName} = ${attributeValue}`);
+        expressionAttributeNames[attributeName] = key;
+        expressionAttributeValues[attributeValue] = updateDataWithTimestamp[key];
+      });
+
+      const updateExpression = `SET ${updateExpressionParts.join(', ')}`;
+
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${campaignId}`,
+          sk: 'campaign'
+        }),
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: marshall(expressionAttributeValues)
+      }));
+
+      const updatedCampaign = await this.findById(tenantId, campaignId);
+      return updatedCampaign;
+    } catch (error) {
+      console.error('Campaign update failed', {
+        campaignId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to update campaign');
+    }
+  }
+
+  static async list(tenantId, options = {}) {
+    try {
+      const { QueryCommand } = await import('@aws-sdk/client-dynamodb');
+      const { limit = 20, nextToken, status, brandId, personaId } = options;
+
+      let exclusiveStartKey;
+      if (nextToken) {
+        try {
+          exclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString());
+        } catch (e) {
+          throw new Error('Invalid nextToken');
         }
       }
 
-      return {
-        success: true,
-        postsCreated: createdPosts.length,
-        posts: createdPosts
-      };
-    } catch (err) {
-      console.error('Failed to create social posts', {
-        campaignId,
-        tenantId,
-        planVersion,
-        totalPosts: posts.length,
-        postsCreatedBeforeError: createdPosts.length,
-        errorName: err.name,
-        errorMessage: err.message,
-        errorCode: err.$metadata?.httpStatusCode
-      });
-      return {
-        success: false,
-        error: err.message,
-        postsCreated: createdPosts.length
-      };
-    }
-  }
-
-  static async updateStatus(campaignId, tenantId, status, planSummary = null, planVersion = null) {
-    const now = new Date().toISOString();
-    let updateExpression = 'SET #status = :status, updatedAt = :updatedAt, version = version + :inc';
-    const expressionAttributeNames = { '#status': 'status' };
-    const expressionAttributeValues = {
-      ':status': status,
-      ':updatedAt': now,
-      ':inc': 1
-    };
-
-    if (planSummary) {
-      updateExpression += ', planSummary = :planSummary';
-      expressionAttributeValues[':planSummary'] = planSummary;
-    }
-
-    if (planVersion) {
-      updateExpression += ', planVersion = :planVersion';
-      expressionAttributeValues[':planVersion'] = planVersion;
-    }
-
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${campaignId}`,
-        sk: 'campaign'
-      }),
-      UpdateExpression: updateExpression,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues)
-    }));
-
-    if (status === 'generating') {
-      await this.publishPlanningCompletedEvent(campaignId, tenantId, planSummary, planVersion);
-    }
-
-    return {
-      success: true,
-      campaignId,
-      status,
-      planSummary,
-      planVersion
-    };
-  }
-
-  static async publishPlanningCompletedEvent(campaignId, tenantId, planSummary, planVersion) {
-    const now = new Date().toISOString();
-
-    await eventBridge.send(new PutEventsCommand({
-      Entries: [{
-        Source: 'campaign-planner',
-        DetailType: 'Campaign Planning Completed',
-        Detail: JSON.stringify({
-          campaignId,
-          tenantId,
-          success: true,
-          workflowType: 'campaign-planning',
-          planSummary,
-          planVersion,
-          timestamp: now
+      const response = await ddb.send(new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :campaignPrefix)',
+        FilterExpression: status ? '#status = :status' : undefined,
+        ExpressionAttributeNames: status ? { '#status': 'status' } : undefined,
+        ExpressionAttributeValues: marshall({
+          ':tenantId': tenantId,
+          ':campaignPrefix': 'CAMPAIGN#',
+          ...(status && { ':status': status })
         }),
-        EventBusName: process.env.EVENT_BUS_NAME || 'default'
-      }]
-    }));
-  }
+        Limit: limit,
+        ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
+      }));
 
-  static async markAsFailed(campaignId, tenantId, error) {
-    const now = new Date().toISOString();
+      let campaigns = response.Items?.map(item => {
+        const rawCampaign = unmarshall(item);
+        return this._transformFromDynamoDB(rawCampaign);
+      }) || [];
 
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${campaignId}`,
-        sk: 'campaign'
-      }),
-      UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt, lastError = :error',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: marshall({
-        ':status': 'failed',
-        ':updatedAt': now,
-        ':error': {
-          code: 'CAMPAIGN_PLANNING_FAILED',
-          message: error.message || 'Campaign planning workflow failed',
-          at: now,
-          retryable: false
+      if (brandId) {
+        campaigns = campaigns.filter(campaign => campaign.brandId === brandId);
+      }
+
+      if (personaId) {
+        campaigns = campaigns.filter(campaign =>
+          campaign.participants.personaIds.includes(personaId)
+        );
+      }
+
+      const result = {
+        items: campaigns,
+        pagination: {
+          limit,
+          hasNextPage: !!response.LastEvaluatedKey,
+          nextToken: response.LastEvaluatedKey
+            ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
+            : null
         }
-      })
-    }));
+      };
 
-    await eventBridge.send(new PutEventsCommand({
-      Entries: [{
-        Source: 'campaign-planner',
-        DetailType: 'Campaign Planning Failed',
-        Detail: JSON.stringify({
-          campaignId,
-          tenantId,
-          success: false,
-          workflowType: 'campaign-planning',
-          error: {
-            code: 'CAMPAIGN_PLANNING_FAILED',
-            message: error.message || 'Campaign planning workflow failed',
-            retryable: false
-          },
-          timestamp: now
-        }),
-        EventBusName: process.env.EVENT_BUS_NAME || 'default'
-      }]
-    }));
+      return result;
+    } catch (error) {
+      console.error('Campaign list failed', {
+        tenantId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to list campaigns');
+    }
   }
 }

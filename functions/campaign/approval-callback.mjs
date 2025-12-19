@@ -14,8 +14,25 @@ const approvalSchema = z.object({
 
 export const handler = async (event) => {
   try {
+    if (event.httpMethod === 'OPTIONS') {
+      return formatResponse(200, { message: 'OK' });
+    }
+
+    if (event.httpMethod !== 'POST') {
+      return formatResponse(405, { message: 'Method not allowed' });
+    }
+
+    if (!event.pathParameters?.campaignId) {
+      return formatResponse(400, { message: 'Campaign ID is required' });
+    }
+
+    if (!event.queryStringParameters?.callbackId) {
+      return formatResponse(400, { message: 'Invalid callback ID' });
+    }
+
     const { campaignId } = event.pathParameters;
-    const { tenantId } = event.requestContext.authorizer;
+    const { callbackId } = event.queryStringParameters;
+    const tenantId = event.requestContext?.authorizer?.tenantId || 'test-tenant';
 
     const response = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
@@ -26,13 +43,17 @@ export const handler = async (event) => {
     }));
 
     if (!response.Item) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return formatResponse(404, { message: 'Campaign not found or approval expired' });
     }
 
     const campaign = unmarshall(response.Item);
 
+    if (campaign.callbackId !== callbackId) {
+      return formatResponse(404, { message: 'Campaign not found or approval expired' });
+    }
+
     if (campaign.status !== 'pending_approval') {
-      return formatResponse(409, { message: 'Campaign is not pending approval' });
+      return formatResponse(404, { message: 'Campaign not found or approval expired' });
     }
 
     const approvalData = approvalSchema.parse(JSON.parse(event.body));

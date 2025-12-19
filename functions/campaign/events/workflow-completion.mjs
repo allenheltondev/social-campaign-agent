@@ -78,8 +78,7 @@ export const handler = async (event) => {
     const now = new Date().toISOString();
     const updateData = {
       status: targetStatus,
-      updatedAt: now,
-      version: campaign.version + 1
+      updatedAt: now
     };
 
     if (targetStatus === CAMPAIGN_STATUSES.COMPLETED) {

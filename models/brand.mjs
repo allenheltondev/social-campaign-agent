@@ -1,4 +1,4 @@
-import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
@@ -56,7 +56,7 @@ export const BrandSchema = z.object({
   ctaLibrary: z.array(z.object({
     type: z.string().min(1).max(50),
     text: z.string().min(1).max(200),
-    defaultUrl: z.string().url().nullable().optional()
+    defaultUrl: z.url().nullable().optional()
   })).max(20).nullable().optional(),
   approvalPolicy: z.object({
     threshold: z.number().min(0).max(1),
@@ -64,7 +64,6 @@ export const BrandSchema = z.object({
   }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  version: z.number().int().min(1),
   status: z.enum(['active', 'inactive', 'archived'])
 });
 
@@ -99,7 +98,6 @@ export const CreateBrandRequestSchema = BrandSchema.omit({
   tenantId: true,
   createdAt: true,
   updatedAt: true,
-  version: true,
   status: true
 }).partial({
   platformGuidelines: true,
@@ -140,9 +138,20 @@ export const validateRequestBody = (schema, body) => {
     return schema.parse(parsed);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Validation error: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      const validationErrors = (error.errors || []).map(e => ({
+        field: (e.path || []).join('.'),
+        message: e.message || 'Validation failed',
+        code: e.code || 'invalid'
+      }));
+      const errorMessage = `Validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+      const validationError = new Error(errorMessage);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: validationErrors };
+      throw validationError;
     }
-    throw new Error('Invalid JSON in request body');
+    const parseError = new Error('Invalid JSON in request body');
+    parseError.name = 'ParseError';
+    throw parseError;
   }
 };
 
@@ -151,7 +160,16 @@ export const validateQueryParams = (schema, params) => {
     return schema.parse(params);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Query parameter validation error: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      const validationErrors = (error.errors || []).map(e => ({
+        field: (e.path || []).join('.'),
+        message: e.message || 'Validation failed',
+        code: e.code || 'invalid'
+      }));
+      const errorMessage = `Query parameter validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+      const validationError = new Error(errorMessage);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: validationErrors };
+      throw validationError;
     }
     throw error;
   }
@@ -166,30 +184,221 @@ export const generateAssetId = () => {
 };
 
 export class Brand {
+  static validateEntity(brand) {
+    try {
+      return BrandSchema.parse(brand);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Brand validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
+    }
+  }
+
+  static validateUpdateData(updateData) {
+    try {
+      const updateSchema = BrandSchema.omit({
+        brandId: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial();
+      return updateSchema.parse(updateData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Brand update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
+    }
+  }
   static async findById(tenantId, brandId) {
-    if (!brandId) {
-      return this.getDefaultBrandConfiguration();
+    try {
+      if (!brandId) {
+        return this.getDefaultBrandConfiguration();
+      }
+
+      const response = await ddb.send(new GetItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${brandId}`,
+          sk: 'metadata'
+        })
+      }));
+
+      if (!response.Item) {
+        return null;
+      }
+
+      const rawBrand = unmarshall(response.Item);
+
+      if (rawBrand.status === 'archived') {
+        return null;
+      }
+
+      return this._transformFromDynamoDB(rawBrand);
+    } catch (error) {
+      console.error('Brand retrieval failed', {
+        brandId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to retrieve brand');
     }
+  }
 
-    const response = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${brandId}`,
-        sk: 'metadata'
-      })
-    }));
+  static async save(tenantId, brand) {
+    try {
+      const { PutItemCommand } = await import('@aws-sdk/client-dynamodb');
 
-    if (!response.Item) {
-      throw new Error(`Brand ${brandId} not found`);
+      const now = new Date().toISOString();
+      const brandId = brand.id || generateBrandId();
+
+      const brandWithDefaults = {
+        ...brand,
+        brandId,
+        tenantId,
+        createdAt: brand.createdAt || now,
+        updatedAt: now,
+        status: brand.status || 'active'
+      };
+
+      const validatedBrand = this.validateEntity(brandWithDefaults);
+      const dynamoItem = this._transformToDynamoDB(tenantId, validatedBrand);
+
+      await ddb.send(new PutItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Item: marshall(dynamoItem),
+        ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
+      }));
+
+      return this._transformFromDynamoDB(dynamoItem);
+    } catch (error) {
+      console.error('Brand save failed', {
+        brandId: brand.id,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to save brand');
     }
+  }
 
-    const rawBrand = unmarshall(response.Item);
-    return this.transformFromDynamoDB(rawBrand);
+  static async update(tenantId, brandId, updateData) {
+    try {
+      const { UpdateItemCommand } = await import('@aws-sdk/client-dynamodb');
+
+      const validatedUpdateData = this.validateUpdateData(updateData);
+      const now = new Date().toISOString();
+      const updateDataWithTimestamp = {
+        ...validatedUpdateData,
+        updatedAt: now
+      };
+
+      const updateExpression = [];
+      const expressionAttributeNames = {};
+      const expressionAttributeValues = {};
+
+      Object.keys(updateDataWithTimestamp).forEach((key, index) => {
+        const attrName = `#attr${index}`;
+        const attrValue = `:val${index}`;
+
+        updateExpression.push(`${attrName} = ${attrValue}`);
+        expressionAttributeNames[attrName] = key;
+        expressionAttributeValues[attrValue] = updateDataWithTimestamp[key];
+      });
+
+      const response = await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${brandId}`,
+          sk: 'metadata'
+        }),
+        UpdateExpression: `SET ${updateExpression.join(', ')}`,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: marshall(expressionAttributeValues),
+        ReturnValues: 'ALL_NEW'
+      }));
+
+      if (!response.Attributes) {
+        return null;
+      }
+
+      return this._transformFromDynamoDB(unmarshall(response.Attributes));
+    } catch (error) {
+      console.error('Brand update failed', {
+        brandId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to update brand');
+    }
+  }
+
+  static async delete(tenantId, brandId) {
+    try {
+      const now = new Date().toISOString();
+      const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+
+      const response = await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${brandId}`,
+          sk: 'metadata'
+        }),
+        UpdateExpression: 'SET #status = :archived, #updatedAt = :now, #ttl = :ttl',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+          '#updatedAt': 'updatedAt',
+          '#ttl': 'ttl'
+        },
+        ExpressionAttributeValues: marshall({
+          ':archived': 'archived',
+          ':now': now,
+          ':ttl': ttl
+        }),
+        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
+      }));
+
+      return { success: true };
+    } catch (error) {
+      console.error('Brand delete failed', {
+        brandId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ConditionalCheckFailedException') {
+        throw new Error('Brand not found');
+      }
+      throw new Error('Failed to delete brand');
+    }
   }
 
   static getDefaultBrandConfiguration() {
     return {
-      brandId: null,
+      id: null,
       platformGuidelines: {
         enabled: ['twitter', 'linkedin', 'instagram', 'facebook'],
         defaults: {
@@ -258,22 +467,50 @@ export class Brand {
     delete cleanBrand.GSI1SK;
     delete cleanBrand.GSI2PK;
     delete cleanBrand.GSI2SK;
+    delete cleanBrand.tenantId;
+
+    cleanBrand.id = cleanBrand.brandId;
+    delete cleanBrand.brandId;
 
     return cleanBrand;
   }
 
-  static transformToDynamoDB(tenantId, brand) {
+  static _transformFromDynamoDB(rawBrand) {
+    const cleanBrand = { ...rawBrand };
+
+    delete cleanBrand.pk;
+    delete cleanBrand.sk;
+    delete cleanBrand.GSI1PK;
+    delete cleanBrand.GSI1SK;
+    delete cleanBrand.GSI2PK;
+    delete cleanBrand.GSI2SK;
+    delete cleanBrand.tenantId;
+
+    cleanBrand.id = cleanBrand.brandId;
+    delete cleanBrand.brandId;
+
+    return cleanBrand;
+  }
+
+  static _transformToDynamoDB(tenantId, brand) {
     const now = new Date().toISOString();
+    const brandId = brand.id || brand.brandId;
 
     return {
-      pk: `${tenantId}#${brand.brandId}`,
+      pk: `${tenantId}#${brandId}`,
       sk: 'metadata',
       GSI1PK: tenantId,
       GSI1SK: `BRAND#${now}`,
       GSI2PK: `${tenantId}#${brand.status}`,
       GSI2SK: `BRAND#${now}`,
-      ...brand
+      ...brand,
+      brandId,
+      tenantId
     };
+  }
+
+  static transformToDynamoDB(tenantId, brand) {
+    return this._transformToDynamoDB(tenantId, brand);
   }
 
   static extractCadenceDefaults(brand) {
@@ -298,6 +535,74 @@ export class Brand {
       instagram: platformDefaults.instagram?.defaultAsset !== 'none',
       facebook: platformDefaults.facebook?.defaultAsset === 'image'
     };
+  }
+
+  static async list(tenantId, options = {}) {
+    try {
+      const { QueryCommand } = await import('@aws-sdk/client-dynamodb');
+      const { limit = 20, nextToken, search, status } = options;
+
+      let exclusiveStartKey;
+      if (nextToken) {
+        try {
+          exclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString());
+        } catch (e) {
+          throw new Error('Invalid nextToken');
+        }
+      }
+
+      const response = await ddb.send(new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :brandPrefix)',
+        FilterExpression: status ? '#status = :status AND #status <> :archived' : '#status <> :archived',
+        ExpressionAttributeNames: {
+          '#status': 'status'
+        },
+        ExpressionAttributeValues: marshall({
+          ':tenantId': tenantId,
+          ':brandPrefix': 'BRAND#',
+          ':archived': 'archived',
+          ...(status && { ':status': status })
+        }),
+        Limit: limit,
+        ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
+      }));
+
+      let brands = response.Items?.map(item => {
+        const rawBrand = unmarshall(item);
+        return this._transformFromDynamoDB(rawBrand);
+      }) || [];
+
+      if (search) {
+        const searchTerm = search.toLowerCase();
+        brands = brands.filter(brand =>
+          brand.name.toLowerCase().includes(searchTerm) ||
+          brand.ethos.toLowerCase().includes(searchTerm) ||
+          brand.coreValues.some(value => value.toLowerCase().includes(searchTerm))
+        );
+      }
+
+      const result = {
+        items: brands,
+        pagination: {
+          limit,
+          hasNextPage: !!response.LastEvaluatedKey,
+          nextToken: response.LastEvaluatedKey
+            ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
+            : null
+        }
+      };
+
+      return result;
+    } catch (error) {
+      console.error('Brand list failed', {
+        tenantId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to list brands');
+    }
   }
 
   static extractContentRestrictions(brand) {

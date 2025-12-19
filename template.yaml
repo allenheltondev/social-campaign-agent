@@ -986,6 +986,7 @@ Resources:
               Resource:
                 - !GetAtt PersonaTable.Arn
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
+                - !Sub "${PersonaTable.Arn}/index/GSI2"
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable

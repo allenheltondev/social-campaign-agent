@@ -1,5 +1,5 @@
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { Campaign } from '../../models/campaign.mjs';
+import { SocialPost } from '../../models/social-post.mjs';
 import {
   getNextStatusFromPosts,
   publishStatusTransition,
@@ -7,8 +7,6 @@ import {
   CAMPAIGN_STATUSES
 } from '../../utils/campaign-status.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
-
-const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
   try {
@@ -20,27 +18,19 @@ export const handler = async (event) => {
       return formatResponse(400, { message: 'Missing required parameters' });
     }
 
-    const pk = `${tenantId}#${campaignId}`;
-    const sk = 'campaign';
+    const campaign = await Campaign.findById(tenantId, campaignId);
 
-    const getResponse = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk })
-    }));
-
-    if (!getResponse.Item) {
+    if (!campaign) {
       console.error('Campaign not found:', { campaignId, tenantId });
       return formatResponse(404, { message: 'Campaign not found' });
     }
-
-    const campaign = unmarshall(getResponse.Item);
     const currentStatus = campaign.status;
 
     let targetStatus = newStatus;
 
     if (!targetStatus && currentStatus === CAMPAIGN_STATUSES.GENERATING) {
-      const posts = await getCampaignPosts(tenantId, campaignId);
-      targetStatus = getNextStatusFromPosts(posts, currentStatus);
+      const postsResult = await SocialPost.findByCampaign(tenantId, campaignId);
+      targetStatus = getNextStatusFromPosts(postsResult.items, currentStatus);
     }
 
     if (!targetStatus || targetStatus === currentStatus) {
@@ -54,8 +44,7 @@ export const handler = async (event) => {
     const now = new Date().toISOString();
     const updateData = {
       status: targetStatus,
-      updatedAt: now,
-      version: campaign.version + 1
+      updatedAt: now
     };
 
     if (targetStatus === CAMPAIGN_STATUSES.COMPLETED) {
@@ -72,30 +61,11 @@ export const handler = async (event) => {
       updateData.lastError = null;
     }
 
-    const updateExpression = [];
-    const expressionAttributeNames = {};
-    const expressionAttributeValues = {};
+    const updatedCampaign = await Campaign.update(tenantId, campaignId, updateData);
 
-    Object.keys(updateData).forEach((key, index) => {
-      const attrName = `#attr${index}`;
-      const attrValue = `:val${index}`;
-      updateExpression.push(`${attrName} = ${attrValue}`);
-      expressionAttributeNames[attrName] = key;
-      expressionAttributeValues[attrValue] = updateData[key];
-    });
-
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk }),
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues),
-      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk) AND version = :currentVersion',
-      ExpressionAttributeValues: {
-        ...marshall(expressionAttributeValues),
-        ':currentVersion': { N: campaign.version.toString() }
-      }
-    }));
+    if (!updatedCampaign) {
+      return formatResponse(404, { message: 'Campaign not found' });
+    }
 
     await publishStatusTransition(
       campaignId,
@@ -110,8 +80,7 @@ export const handler = async (event) => {
       campaignId,
       fromStatus: currentStatus,
       toStatus: targetStatus,
-      updatedAt: now,
-      version: campaign.version + 1
+      updatedAt: now
     });
 
   } catch (err) {
@@ -127,20 +96,4 @@ export const handler = async (event) => {
   }
 };
 
-async function getCampaignPosts(tenantId, campaignId) {
-  try {
-    const response = await ddb.send(new QueryCommand({
-      TableName: process.env.TABLE_NAME,
-      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
-      ExpressionAttributeValues: marshall({
-        ':pk': `${tenantId}#${campaignId}`,
-        ':skPrefix': 'POST#'
-      })
-    }));
 
-    return response.Items ? response.Items.map(item => unmarshall(item)) : [];
-  } catch (error) {
-    console.error('Error fetching campaign posts:', error);
-    return [];
-  }
-}

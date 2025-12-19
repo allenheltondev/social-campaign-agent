@@ -25,6 +25,7 @@ export const handler = async (event) => {
 
     return formatResponse(200, brand);
   } catch (error) {
+    console.error('Get brand failed:', error);
     return createStandardizedError(error, operation, {
       tenantId: event.requestContext?.authorizer?.tenantId,
       brandId: event.pathParameters?.brandId

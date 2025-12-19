@@ -35,15 +35,13 @@ export const handler = async (event) => {
           pk: `${tenantId}#${personaId}`,
           sk: 'persona'
         }),
-        UpdateExpression: 'SET styleData = :styleData, analysisStatus = :status, lastAnalysisAt = :timestamp, #version = #version + :inc',
+        UpdateExpression: 'SET styleData = :styleData, analysisStatus = :status, lastAnalysisAt = :timestamp',
         ExpressionAttributeNames: {
-          '#version': 'version'
         },
         ExpressionAttributeValues: marshall({
           ':styleData': styleData,
           ':status': 'completed',
-          ':timestamp': new Date().toISOString(),
-          ':inc': 1
+          ':timestamp': new Date().toISOString()
         })
       };
 

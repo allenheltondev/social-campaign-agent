@@ -1,9 +1,6 @@
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { z } from 'zod';
-
-const ddb = new DynamoDBClient();
 
 const updatePostStatusSchema = z.object({
   status: z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review']),
@@ -31,25 +28,16 @@ export const handler = async (event) => {
     const requestBody = JSON.parse(event.body || '{}');
     const validatedData = updatePostStatusSchema.parse(requestBody);
 
-    const pk = `${tenantId}#${campaignId}`;
-    const sk = `POST#${postId}`;
+    const post = await SocialPost.findById(tenantId, campaignId, postId);
 
-    const getResponse = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk })
-    }));
-
-    if (!getResponse.Item) {
+    if (!post) {
       return formatResponse(404, { message: 'Post not found' });
     }
-
-    const post = unmarshall(getResponse.Item);
     const now = new Date().toISOString();
 
     const updateData = {
       status: validatedData.status,
-      updatedAt: now,
-      version: post.version + 1
+      updatedAt: now
     };
 
     if (validatedData.error) {
@@ -70,35 +58,11 @@ export const handler = async (event) => {
       };
     }
 
-    const updateExpression = [];
-    const expressionAttributeNames = {};
-    const expressionAttributeValues = {};
+    const updatedPost = await SocialPost.update(tenantId, campaignId, postId, updateData);
 
-    Object.keys(updateData).forEach((key, index) => {
-      const attrName = `#attr${index}`;
-      const attrValue = `:val${index}`;
-      updateExpression.push(`${attrName} = ${attrValue}`);
-      expressionAttributeNames[attrName] = key;
-      expressionAttributeValues[attrValue] = updateData[key];
-    });
-
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk }),
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues),
-      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk) AND version = :currentVersion',
-      ExpressionAttributeValues: {
-        ...marshall(expressionAttributeValues),
-        ':currentVersion': { N: post.version.toString() }
-      }
-    }));
-
-    const updatedPost = {
-      ...post,
-      ...updateData
-    };
+    if (!updatedPost) {
+      return formatResponse(404, { message: 'Post not found' });
+    }
 
     return formatResponse(200, {
       message: 'Post status updated successfully',

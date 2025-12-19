@@ -1,6 +1,4 @@
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { CampaignSchema } from '../../models/campaign.mjs';
+import { Campaign } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import {
   isValidStatusTransition,
@@ -9,8 +7,6 @@ import {
   createErrorTracking,
   getUpdatePermissions as getStatusUpdatePermissions
 } from '../../utils/campaign-status.mjs';
-
-const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
   try {
@@ -22,19 +18,11 @@ export const handler = async (event) => {
       return formatResponse(400, { message: 'Missing required parameters' });
     }
 
-    const pk = `${tenantId}#${campaignId}`;
-    const sk = 'campaign';
+    const existingCampaign = await Campaign.findById(tenantId, campaignId);
 
-    const getResponse = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk })
-    }));
-
-    if (!getResponse.Item) {
+    if (!existingCampaign) {
       return formatResponse(404, { message: 'Campaign not found' });
     }
-
-    const existingCampaign = unmarshall(getResponse.Item);
 
     const updatePermissions = getStatusUpdatePermissions(existingCampaign.status);
     const filteredUpdateData = filterUpdateData(updateData, updatePermissions);
@@ -58,50 +46,26 @@ export const handler = async (event) => {
       }
     }
 
-    const validatedData = CampaignSchema.partial().parse(filteredUpdateData);
-
-    const updatedCampaign = {
-      ...existingCampaign,
-      ...validatedData,
-      updatedAt: new Date().toISOString(),
-      version: existingCampaign.version + 1
-    };
-
-    if (validatedData.status === 'completed') {
-      updatedCampaign.completedAt = new Date().toISOString();
+    if (filteredUpdateData.status === 'completed') {
+      filteredUpdateData.completedAt = new Date().toISOString();
     }
 
     if (shouldUpdatePlanVersion(filteredUpdateData, existingCampaign.status)) {
-      updatedCampaign.planVersion = generatePlanVersion(updatedCampaign);
+      filteredUpdateData.planVersion = generatePlanVersion({ ...existingCampaign, ...filteredUpdateData });
     }
 
-    const updateExpression = [];
-    const expressionAttributeNames = {};
-    const expressionAttributeValues = {};
+    const updatedCampaign = await Campaign.update(tenantId, campaignId, filteredUpdateData);
 
-    Object.keys(updatedCampaign).forEach((key, index) => {
-      const attrName = `#attr${index}`;
-      const attrValue = `:val${index}`;
-      updateExpression.push(`${attrName} = ${attrValue}`);
-      expressionAttributeNames[attrName] = key;
-      expressionAttributeValues[attrValue] = updatedCampaign[key];
-    });
+    if (!updatedCampaign) {
+      return formatResponse(404, { message: 'Campaign not found' });
+    }
 
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk }),
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues),
-      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
-    }));
-
-    if (validatedData.status && validatedData.status !== existingCampaign.status) {
+    if (filteredUpdateData.status && filteredUpdateData.status !== existingCampaign.status) {
       await publishStatusTransition(
         campaignId,
         tenantId,
         existingCampaign.status,
-        validatedData.status,
+        filteredUpdateData.status,
         'Manual status update'
       );
     }

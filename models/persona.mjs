@@ -1,4 +1,4 @@
-import { DynamoDBClient, GetItemCommand, BatchGetItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand, BatchGetItemCommand, PutItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
@@ -71,7 +71,6 @@ export const PersonaSchema = z.object({
   lastAnalysisAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  version: z.number().int().min(1),
   isActive: z.boolean()
 });
 
@@ -93,7 +92,6 @@ export const CreatePersonaRequestSchema = PersonaSchema.omit({
   inferredStyle: true,
   createdAt: true,
   updatedAt: true,
-  version: true,
   isActive: true
 });
 
@@ -122,9 +120,20 @@ export const validateRequestBody = (schema, body) => {
     return schema.parse(parsed);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Validation error: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      const validationErrors = (error.errors || []).map(e => ({
+        field: (e.path || []).join('.'),
+        message: e.message || 'Validation failed',
+        code: e.code || 'invalid'
+      }));
+      const errorMessage = `Validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+      const validationError = new Error(errorMessage);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: validationErrors };
+      throw validationError;
     }
-    throw new Error('Invalid JSON in request body');
+    const parseError = new Error('Invalid JSON in request body');
+    parseError.name = 'ParseError';
+    throw parseError;
   }
 };
 
@@ -133,7 +142,16 @@ export const validateQueryParams = (schema, params) => {
     return schema.parse(params);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Query parameter validation error: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      const validationErrors = (error.errors || []).map(e => ({
+        field: (e.path || []).join('.'),
+        message: e.message || 'Validation failed',
+        code: e.code || 'invalid'
+      }));
+      const errorMessage = `Query parameter validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+      const validationError = new Error(errorMessage);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: validationErrors };
+      throw validationError;
     }
     throw error;
   }
@@ -148,21 +166,287 @@ export const generateExampleId = () => {
 };
 
 export class Persona {
-  static async findById(tenantId, personaId) {
-    const response = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({
-        pk: `${tenantId}#${personaId}`,
-        sk: 'persona'
-      })
-    }));
-
-    if (!response.Item) {
-      return null;
+  static validateEntity(persona) {
+    try {
+      return PersonaSchema.parse(persona);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Persona validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
     }
+  }
 
-    const rawPersona = unmarshall(response.Item);
-    return this.transformFromDynamoDB(rawPersona);
+  static validateUpdateData(updateData) {
+    try {
+      const updateSchema = PersonaSchema.omit({
+        personaId: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial();
+      return updateSchema.parse(updateData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationErrors = (error.errors || []).map(e => ({
+          field: (e.path || []).join('.'),
+          message: e.message || 'Validation failed',
+          code: e.code || 'invalid'
+        }));
+        const errorMessage = `Persona update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
+        const validationError = new Error(errorMessage);
+        validationError.name = 'ValidationError';
+        validationError.details = { errors: validationErrors };
+        throw validationError;
+      }
+      throw error;
+    }
+  }
+  static async findById(tenantId, personaId) {
+    try {
+      const response = await ddb.send(new GetItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${personaId}`,
+          sk: 'persona'
+        })
+      }));
+
+      if (!response.Item) {
+        return null;
+      }
+
+      const rawPersona = unmarshall(response.Item);
+
+      if (!rawPersona.isActive) {
+        return null;
+      }
+
+      return this.transformFromDynamoDB(rawPersona);
+    } catch (error) {
+      console.error('Persona retrieval failed', {
+        personaId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to retrieve persona');
+    }
+  }
+
+  static async save(tenantId, persona) {
+    try {
+      const personaId = persona.id || generatePersonaId();
+      const now = new Date().toISOString();
+
+      const personaWithDefaults = {
+        ...persona,
+        personaId,
+        tenantId,
+        createdAt: now,
+        updatedAt: now,
+        isActive: true
+      };
+
+      const validatedPersona = this.validateEntity(personaWithDefaults);
+      const dynamoItem = this._transformToDynamoDB(tenantId, validatedPersona);
+
+      await ddb.send(new PutItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Item: marshall(dynamoItem),
+        ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
+      }));
+
+      return this.transformFromDynamoDB(validatedPersona);
+    } catch (error) {
+      console.error('Persona save failed', {
+        personaId: persona.id,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to save persona');
+    }
+  }
+
+  static async update(tenantId, personaId, updateData) {
+    try {
+      const validatedUpdateData = this.validateUpdateData(updateData);
+      const existing = await this.findById(tenantId, personaId);
+      if (!existing) {
+        return null;
+      }
+
+      const updatedPersona = {
+        ...existing,
+        ...validatedUpdateData,
+        id: personaId,
+        updatedAt: new Date().toISOString()
+      };
+
+      const personaForValidation = {
+        ...updatedPersona,
+        personaId,
+        tenantId
+      };
+
+      const validatedPersona = this.validateEntity(personaForValidation);
+      const dynamoItem = this._transformToDynamoDB(tenantId, validatedPersona);
+
+      await ddb.send(new PutItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Item: marshall(dynamoItem)
+      }));
+
+      return this.transformFromDynamoDB(validatedPersona);
+    } catch (error) {
+      console.error('Persona update failed', {
+        personaId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ValidationError') {
+        throw error;
+      }
+      throw new Error('Failed to update persona');
+    }
+  }
+
+  static async delete(tenantId, personaId) {
+    try {
+      const { UpdateItemCommand } = await import('@aws-sdk/client-dynamodb');
+
+      const now = new Date().toISOString();
+      const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${personaId}`,
+          sk: 'persona'
+        }),
+        UpdateExpression: 'SET #isActive = :false, #updatedAt = :now, #ttl = :ttl',
+        ExpressionAttributeNames: {
+          '#isActive': 'isActive',
+          '#updatedAt': 'updatedAt',
+          '#ttl': 'ttl'
+        },
+        ExpressionAttributeValues: marshall({
+          ':false': false,
+          ':now': now,
+          ':ttl': ttl
+        }),
+        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
+      }));
+
+      return true;
+    } catch (error) {
+      console.error('Persona delete failed', {
+        personaId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      if (error.name === 'ConditionalCheckFailedException') {
+        return false;
+      }
+      throw new Error('Failed to delete persona');
+    }
+  }
+
+  static async list(tenantId, options = {}) {
+    try {
+      const { limit = 20, nextToken, search, company, role, primaryAudience } = options;
+
+      let exclusiveStartKey;
+      if (nextToken) {
+        try {
+          exclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString());
+        } catch (e) {
+          throw new Error('Invalid nextToken');
+        }
+      }
+
+      const response = await ddb.send(new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :personaPrefix)',
+        FilterExpression: '#isActive = :true',
+        ExpressionAttributeNames: {
+          '#isActive': 'isActive'
+        },
+        ExpressionAttributeValues: marshall({
+          ':tenantId': tenantId,
+          ':personaPrefix': 'PERSONA#',
+          ':true': true
+        }),
+        Limit: limit,
+        ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
+      }));
+
+      let personas = response.Items?.map(item => {
+        const rawPersona = unmarshall(item);
+        return this.transformFromDynamoDB(rawPersona);
+      }) || [];
+
+      // Apply client-side filtering
+      if (search) {
+        const searchTerm = search.toLowerCase();
+        personas = personas.filter(persona =>
+          persona.name.toLowerCase().includes(searchTerm) ||
+          persona.role.toLowerCase().includes(searchTerm) ||
+          persona.company.toLowerCase().includes(searchTerm) ||
+          persona.primaryAudience.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      if (company) {
+        personas = personas.filter(persona =>
+          persona.company.toLowerCase().includes(company.toLowerCase())
+        );
+      }
+
+      if (role) {
+        personas = personas.filter(persona =>
+          persona.role.toLowerCase().includes(role.toLowerCase())
+        );
+      }
+
+      if (primaryAudience) {
+        personas = personas.filter(persona =>
+          persona.primaryAudience === primaryAudience
+        );
+      }
+
+      const result = {
+        items: personas,
+        pagination: {
+          limit,
+          hasNextPage: !!response.LastEvaluatedKey,
+          nextToken: response.LastEvaluatedKey
+            ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
+            : null
+        }
+      };
+
+      return result;
+    } catch (error) {
+      console.error('Persona list failed', {
+        tenantId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to list personas');
+    }
   }
 
   static async findByIds(tenantId, personaIds) {
@@ -197,7 +481,7 @@ export class Persona {
     }
 
     const missingPersonas = personaIds.filter(id =>
-      !personas.find(p => p.personaId === id)
+      !personas.find(p => p.id === id)
     );
 
     if (missingPersonas.length > 0) {
@@ -210,6 +494,7 @@ export class Persona {
   static transformFromDynamoDB(rawPersona) {
     const cleanPersona = { ...rawPersona };
 
+    // Remove all internal DynamoDB fields
     delete cleanPersona.pk;
     delete cleanPersona.sk;
     delete cleanPersona.GSI1PK;
@@ -217,26 +502,43 @@ export class Persona {
     delete cleanPersona.GSI2PK;
     delete cleanPersona.GSI2SK;
 
-    return PersonaSchema.parse(cleanPersona);
+    // Remove tenant exposure and use clean "id" property
+    delete cleanPersona.tenantId;
+    cleanPersona.id = cleanPersona.personaId;
+    delete cleanPersona.personaId;
+
+    return cleanPersona;
   }
 
-  static transformToDynamoDB(tenantId, persona) {
+  static _transformToDynamoDB(tenantId, persona) {
     const now = new Date().toISOString();
 
+    // Convert DTO back to internal format
+    const internalPersona = { ...persona };
+
+    // Handle id/personaId conversion
+    if (internalPersona.id) {
+      internalPersona.personaId = internalPersona.id;
+      delete internalPersona.id;
+    }
+
+    // Add tenant context back
+    internalPersona.tenantId = tenantId;
+
     return {
-      pk: `${tenantId}#${persona.personaId}`,
+      pk: `${tenantId}#${internalPersona.personaId}`,
       sk: 'persona',
       GSI1PK: tenantId,
       GSI1SK: `PERSONA#${now}`,
-      GSI2PK: `${tenantId}#${persona.company}`,
-      GSI2SK: `PERSONA#${persona.role}#${now}`,
-      ...persona
+      GSI2PK: `${tenantId}#${internalPersona.company}`,
+      GSI2SK: `PERSONA#${internalPersona.role}#${now}`,
+      ...internalPersona
     };
   }
 
   static enrichForCampaign(persona) {
     return {
-      personaId: persona.personaId,
+      personaId: persona.id,
       name: persona.name,
       role: persona.role,
       company: persona.company,

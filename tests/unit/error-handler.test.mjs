@@ -20,7 +20,7 @@ describe('Error Handler Utility', () => {
 
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
-    expect(body.errorCode).toBe('BRAND_VALIDATION_ERROR');
+    expect(body.errorCode).toBe('VALIDATION_ERROR');
     expect(body.message).toBe('Validation error: name is required');
   });
 
@@ -31,7 +31,7 @@ describe('Error Handler Utility', () => {
 
     expect(result.statusCode).toBe(404);
     const body = JSON.parse(result.body);
-    expect(body.errorCode).toBe('BRAND_NOT_FOUND');
+    expect(body.errorCode).toBe('NOT_FOUND');
     expect(body.message).toBe('Resource not found');
   });
 
@@ -41,7 +41,7 @@ describe('Error Handler Utility', () => {
 
     expect(result.statusCode).toBe(500);
     const body = JSON.parse(result.body);
-    expect(body.errorCode).toBe('BRAND_INTERNAL_ERROR');
+    expect(body.errorCode).toBe('INTERNAL_ERROR');
     expect(body.message).toBe('Internal server error');
   });
 

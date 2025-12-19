@@ -1,9 +1,6 @@
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { z } from 'zod';
-
-const ddb = new DynamoDBClient();
 
 const approvePostSchema = z.object({
   approved: z.boolean(),
@@ -23,19 +20,11 @@ export const handler = async (event) => {
     const requestBody = JSON.parse(event.body || '{}');
     const validatedData = approvePostSchema.parse(requestBody);
 
-    const pk = `${tenantId}#${campaignId}`;
-    const sk = `POST#${postId}`;
+    const post = await SocialPost.findById(tenantId, campaignId, postId);
 
-    const getResponse = await ddb.send(new GetItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk })
-    }));
-
-    if (!getResponse.Item) {
+    if (!post) {
       return formatResponse(404, { message: 'Post not found' });
     }
-
-    const post = unmarshall(getResponse.Item);
 
     if (post.status !== 'needs_review') {
       return formatResponse(400, {
@@ -49,8 +38,6 @@ export const handler = async (event) => {
 
     const updateData = {
       status: newStatus,
-      updatedAt: now,
-      version: post.version + 1,
       approval: {
         approved: validatedData.approved,
         reviewedAt: now,
@@ -68,35 +55,7 @@ export const handler = async (event) => {
       };
     }
 
-    const updateExpression = [];
-    const expressionAttributeNames = {};
-    const expressionAttributeValues = {};
-
-    Object.keys(updateData).forEach((key, index) => {
-      const attrName = `#attr${index}`;
-      const attrValue = `:val${index}`;
-      updateExpression.push(`${attrName} = ${attrValue}`);
-      expressionAttributeNames[attrName] = key;
-      expressionAttributeValues[attrValue] = updateData[key];
-    });
-
-    await ddb.send(new UpdateItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Key: marshall({ pk, sk }),
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues),
-      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk) AND version = :currentVersion',
-      ExpressionAttributeValues: {
-        ...marshall(expressionAttributeValues),
-        ':currentVersion': { N: post.version.toString() }
-      }
-    }));
-
-    const updatedPost = {
-      ...post,
-      ...updateData
-    };
+    const updatedPost = await SocialPost.update(tenantId, campaignId, postId, updateData);
 
     return formatResponse(200, {
       message: `Post ${validatedData.approved ? 'approved' : 'rejected'} successfully`,
@@ -108,12 +67,6 @@ export const handler = async (event) => {
       return formatResponse(400, {
         message: 'Invalid request data',
         details: error.errors
-      });
-    }
-
-    if (error.name === 'ConditionalCheckFailedException') {
-      return formatResponse(409, {
-        message: 'Post was modified by another process'
       });
     }
 

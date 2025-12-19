@@ -1,10 +1,5 @@
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall } from '@aws-sdk/util-dynamodb';
-import { ulid } from 'ulid';
-import { CreatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
+import { Persona, CreatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
-
-const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
   try {
@@ -16,33 +11,9 @@ export const handler = async (event) => {
 
     const requestData = validateRequestBody(CreatePersonaRequestSchema, event.body);
 
-    const personaId = ulid();
-    const now = new Date().toISOString();
+    const persona = await Persona.save(tenantId, requestData);
 
-    const persona = {
-      ...requestData,
-      personaId,
-      tenantId,
-      createdAt: now,
-      updatedAt: now,
-      version: 1,
-      isActive: true
-    };
-
-    // Store in DynamoDB
-    await ddb.send(new PutItemCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: marshall({
-        pk: `${tenantId}#${personaId}`,
-        sk: 'persona',
-        GSI1PK: tenantId,
-        GSI1SK: `persona#${now}`,
-        ...persona
-      }),
-      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
-    }));
-
-    return formatResponse(201, { id: personaId });
+    return formatResponse(201, { id: persona.id });
   } catch (error) {
     console.error('Create persona error:', error);
 

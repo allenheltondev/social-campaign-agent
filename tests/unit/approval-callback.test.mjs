@@ -40,6 +40,11 @@ describe('Approval Callback Handler', () => {
     httpMethod: 'POST',
     pathParameters: { campaignId: 'test-campaign' },
     queryStringParameters: { callbackId: 'test-callback-id' },
+    requestContext: {
+      authorizer: {
+        tenantId: 'test-tenant'
+      }
+    },
     body: JSON.stringify({
       decision: 'approved',
       comments: 'Looks good'
@@ -48,7 +53,11 @@ describe('Approval Callback Handler', () => {
   });
 
   it('should handle OPTIONS requests', async () => {
-    const event = { httpMethod: 'OPTIONS' };
+    const event = {
+      httpMethod: 'OPTIONS',
+      pathParameters: {},
+      queryStringParameters: {}
+    };
     const result = await handler(event);
 
     expect(result.statusCode).toBe(200);
@@ -56,7 +65,11 @@ describe('Approval Callback Handler', () => {
   });
 
   it('should reject non-POST methods', async () => {
-    const event = { httpMethod: 'GET' };
+    const event = {
+      httpMethod: 'GET',
+      pathParameters: {},
+      queryStringParameters: {}
+    };
     const result = await handler(event);
 
     expect(result.statusCode).toBe(405);

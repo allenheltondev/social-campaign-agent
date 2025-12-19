@@ -93,7 +93,7 @@ describe('Persona CRUD Functions', () => {
         }},
         createdAt: { S: '2023-01-01T00:00:00Z' },
         updatedAt: { S: '2023-01-01T00:00:00Z' },
-        version: { N: '1' },
+
         isActive: { BOOL: true }
       };
 

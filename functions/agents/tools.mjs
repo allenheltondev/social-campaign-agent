@@ -2,7 +2,7 @@ import { tool } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { Campaign } from '../../models/campaign.mjs';
+import { SocialPost } from '../../models/social-post.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -12,7 +12,6 @@ export const createSocialPostsTool = tool({
   inputSchema: z.object({
     campaignId: z.string(),
     tenantId: z.string(),
-    planVersion: z.string(),
     posts: z.array(z.object({
       personaId: z.string(),
       platform: z.enum(['twitter', 'linkedin', 'instagram', 'facebook']),
@@ -34,10 +33,10 @@ export const createSocialPostsTool = tool({
   }),
   callback: async (input) => {
     try {
-      const { campaignId, tenantId, planVersion, posts } = input;
-      console.log('Creating social posts:', { campaignId, tenantId, planVersion, postCount: posts.length });
+      const { campaignId, tenantId, posts } = input;
+      console.log('Creating social posts:', { campaignId, tenantId, postCount: posts.length });
 
-      const result = await Campaign.createSocialPosts(campaignId, tenantId, planVersion, posts);
+      const result = await SocialPost.createSocialPosts(campaignId, tenantId, posts);
 
       console.log('Social posts created:', result);
 
@@ -215,7 +214,7 @@ export const saveGeneratedContentTool = tool({
           pk: `${tenantId}#${campaignId}`,
           sk: `POST#${postId}`
         }),
-        UpdateExpression: 'SET content = :content, #status = :status, updatedAt = :updatedAt, version = version + :inc',
+        UpdateExpression: 'SET content = :content, #status = :status, updatedAt = :updatedAt',
         ExpressionAttributeNames: {
           '#status': 'status'
         },
@@ -225,8 +224,7 @@ export const saveGeneratedContentTool = tool({
             generatedAt: now
           },
           ':status': 'completed',
-          ':updatedAt': now,
-          ':inc': 1
+          ':updatedAt': now
         })
       }));
 
@@ -313,12 +311,10 @@ export const saveStyleAnalysisTool = tool({
           pk: `${tenantId}#${personaId}`,
           sk: 'persona'
         }),
-        UpdateExpression: 'SET inferredStyle = :style, updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :inc',
+        UpdateExpression: 'SET inferredStyle = :style, updatedAt = :updatedAt',
         ExpressionAttributeValues: marshall({
           ':style': analysisWithTimestamp,
-          ':updatedAt': new Date().toISOString(),
-          ':zero': 0,
-          ':inc': 1
+          ':updatedAt': new Date().toISOString()
         }),
         ReturnValues: 'UPDATED_NEW'
       };
