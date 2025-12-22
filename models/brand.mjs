@@ -607,8 +607,8 @@ export class Brand {
 
   static extractContentRestrictions(brand) {
     return {
-      avoidTopics: brand?.contentStandards?.avoidTopics || [],
-      avoidPhrases: brand?.contentStandards?.avoidPhrases || []
+      avoidTopics: brand?.contentStandards?.restrictions || [],
+      avoidPhrases: brand?.contentStandards?.restrictions || []
     };
   }
 }

@@ -9,7 +9,7 @@ const ddb = new DynamoDBClient();
 
 const ObjectiveSchema = z.enum(['awareness', 'education', 'conversion', 'event', 'launch']);
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
-const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review']);
+const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review', 'approved', 'rejected', 'approval_timeout', 'needs_revision']);
 const DayOfWeekSchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
 
 
@@ -110,6 +110,7 @@ export const CampaignSchema = z.object({
   messaging: MessagingSchema,
   assetOverrides: AssetOverridesSchema,
   status: StatusSchema,
+  callbackId: z.string().nullable().optional(),
   planSummary: z.object({
     totalPosts: z.number().int().min(0),
     postsPerPlatform: z.record(z.number().int().min(0)),

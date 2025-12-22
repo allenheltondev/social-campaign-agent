@@ -156,10 +156,14 @@ export const run = async (tenantId, postData) => {
 
     const fullPost = unmarshall(postResponse.Item);
 
-    const [campaign, persona, brand] = await Promise.all([
-      Campaign.findById(tenantId, campaignId),
+    const campaign = await Campaign.findById(tenantId, campaignId);
+    if (!campaign) {
+      throw new Error(`Campaign ${campaignId} not found`);
+    }
+
+    const [persona, brand] = await Promise.all([
       Persona.findById(tenantId, personaId),
-      fullPost.brandId ? Brand.findById(tenantId, fullPost.brandId) : Promise.resolve(null)
+      campaign.brandId ? Brand.findById(tenantId, campaign.brandId) : Promise.resolve(null)
     ]);
 
     if (!campaign) {

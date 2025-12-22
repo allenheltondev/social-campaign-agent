@@ -1,13 +1,10 @@
 import { withDurableExecution } from '@aws/durable-execution-sdk-js';
-import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { marshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 
 import { run as campaignPlannerRun } from '../agents/campaign-planner.mjs';
 import { run as contentGeneratorRun } from '../agents/content-generator.mjs';
 import { Campaign } from '../../models/campaign.mjs';
-
-const ddb = new DynamoDBClient();
+import { SocialPost } from '../../models/social-post.mjs';
 
 const inputSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
@@ -132,8 +129,7 @@ export const handler = withDurableExecution(
           });
 
           if (!result.success) {
-            const error = result.error || { message: 'Campaign planning returned unsuccessful result' };
-            throw new Error(error.message || 'Campaign planning failed');
+            throw new Error(result.message || 'Campaign planning failed');
           }
 
           if (!result.posts || !Array.isArray(result.posts)) {
@@ -157,22 +153,8 @@ export const handler = withDurableExecution(
 
       let contentResults = await context.map(planResults.posts || [],
         async (ctx, post, index) => {
-          await ctx.step(`Update post ${index} status to generating`, async () => {
-            await ddb.send(new UpdateItemCommand({
-              TableName: process.env.TABLE_NAME,
-              Key: marshall({
-                pk: `${tenantId}#${campaign.id}`,
-                sk: `POST#${post.id}`
-              }),
-              UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
-              ExpressionAttributeNames: {
-                '#status': 'status'
-              },
-              ExpressionAttributeValues: marshall({
-                ':status': 'generating',
-                ':updatedAt': new Date().toISOString()
-              })
-            }));
+          return await ctx.step(`Update post ${index} status to generating`, async () => {
+            await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'generating');
 
             const result = await contentGeneratorRun(tenantId, {
               campaignId: campaign.id,
@@ -183,31 +165,15 @@ export const handler = withDurableExecution(
             console.log(result);
 
             if (!result.success) {
-              const error = result.error || { message: 'Content generation returned unsuccessful result' };
-              throw new Error(`Content generation failed for post ${post.id}: ${error.message}`);
+              throw new Error(`Content generation failed for post ${post.id}: ${result.message || 'Content generation failed'}`);
             }
 
-            await ddb.send(new UpdateItemCommand({
-              TableName: process.env.TABLE_NAME,
-              Key: marshall({
-                pk: `${tenantId}#${campaign.id}`,
-                sk: `POST#${post.id}`
-              }),
-              UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
-              ExpressionAttributeNames: {
-                '#status': 'status'
-              },
-              ExpressionAttributeValues: marshall({
-                ':status': 'completed',
-                ':updatedAt': new Date().toISOString()
-              })
-            }));
+            await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'completed');
 
             return {
               postId: post.id,
               success: true,
-              content: result.content,
-              error: null
+              content: result.content
             };
           });
         },
@@ -237,22 +203,10 @@ export const handler = withDurableExecution(
       let finalStatus = 'needs_revision';
       if (successfulPosts.length) {
         const result = await context.waitForCallback('Wait for approval', async (callbackId) => {
-          await ddb.send(new UpdateItemCommand({
-            TableName: process.env.TABLE_NAME,
-            Key: marshall({
-              pk: `${tenantId}#${campaign.id}`,
-              sk: 'campaign'
-            }),
-            UpdateExpression: 'SET #status = :status, callbackId = :callbackId, updatedAt = :updatedAt',
-            ExpressionAttributeNames: {
-              '#status': 'status'
-            },
-            ExpressionAttributeValues: marshall({
-              ':status': 'pending_approval',
-              ':callbackId': callbackId,
-              ':updatedAt': new Date().toISOString()
-            })
-          }));
+          await Campaign.update(tenantId, campaign.id, {
+            status: 'awaiting_review',
+            callbackId
+          });
         }, { timeout: { hours: 24 } });
 
 
@@ -273,16 +227,10 @@ export const handler = withDurableExecution(
         });
       }
 
-      await Campaign.update(tenantId, campaign.id, { status: finalStatus });
-
-      await ddb.send(new UpdateItemCommand({
-        TableName: process.env.TABLE_NAME,
-        Key: marshall({
-          pk: `${tenantId}#${campaign.id}`,
-          sk: 'campaign'
-        }),
-        UpdateExpression: 'REMOVE callbackId'
-      }));
+      await Campaign.update(tenantId, campaign.id, {
+        status: finalStatus,
+        callbackId: null
+      });
 
       return {
         success: true,

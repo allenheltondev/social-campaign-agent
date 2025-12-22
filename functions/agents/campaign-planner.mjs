@@ -22,7 +22,7 @@ const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, person
     { name: 'Engagement', weight: 0.3 }
   ];
 
-  const assetDefaults = brandConfig?.assetDefaults || {};
+  const assetDefaults = Brand.extractAssetRequirements(brandConfig);
   const assetOverrides = campaign.assetOverrides?.forceVisuals || {};
   const assetRequirements = {
     twitter: assetOverrides.twitter ?? assetDefaults.twitter ?? false,
@@ -59,7 +59,7 @@ ${messagingPillars.map(p => `- ${p.name}: ${Math.round(p.weight * 100)}% of post
 
 **CONTENT RESTRICTIONS**:
 ${campaign.messaging?.campaignAvoidTopics?.length > 0 ? `Campaign-specific: ${campaign.messaging.campaignAvoidTopics.join(', ')}` : ''}
-${brandConfig?.contentRestrictions?.avoidTopics?.length > 0 ? `Brand-level: ${brandConfig.contentRestrictions.avoidTopics.join(', ')}` : ''}
+${brandConfig?.contentStandards?.restrictions?.length > 0 ? `Brand-level: ${brandConfig.contentStandards.restrictions.join(', ')}` : ''}
 
 **BRAND VOICE**: ${Array.isArray(brandConfig?.voiceGuidelines?.tone) ? brandConfig.voiceGuidelines.tone.join(', ') : brandConfig?.voiceGuidelines?.tone || 'professional'}
 
@@ -85,7 +85,7 @@ ${Object.entries(assetRequirements).map(([platform, required]) => `- ${platform}
 4. For each post, define:
    - personaId: MUST use exact persona ID from the list above (${personaConfigs.map(p => p.personaId).join(', ')})
    - platform: Which platform it's for
-   - scheduledDate: When to publish (ISO 8601 format in UTC)
+   - scheduledAt: When to publish (ISO 8601 format in UTC)
    - topic: Specific topic aligned with messaging pillar
    - intent: Choose from [announce, educate, opinion, invite_discussion, social_proof, reminder]
    - assetRequirements: Object with imageRequired (boolean), imageDescription (string or null), videoRequired (boolean), videoDescription (string or null)
@@ -125,7 +125,7 @@ You MUST use the create_social_posts tool to save your plan. Call it once with a
 For each post, provide:
 - personaId: MUST be an exact persona ID from the provided list - never make up or generate persona IDs
 - platform: one of twitter, linkedin, instagram, facebook
-- scheduledDate: ISO 8601 date string
+- scheduledAt: ISO 8601 date string
 - topic: string describing the post topic
 - intent: one of announce, educate, opinion, invite_discussion, social_proof, reminder
 - assetRequirements: object with imageRequired (boolean), imageDescription (string or null), videoRequired (boolean), videoDescription (string or null)

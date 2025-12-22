@@ -15,7 +15,7 @@ export const createSocialPostsTool = tool({
     posts: z.array(z.object({
       personaId: z.string(),
       platform: z.enum(['twitter', 'linkedin', 'instagram', 'facebook']),
-      scheduledDate: z.string(),
+      scheduledAt: z.string(),
       topic: z.string(),
       intent: z.enum(['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder']),
       assetRequirements: z.object({
@@ -107,7 +107,7 @@ export const getBrandDetailsTool = tool({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
         pk: `${tenantId}#${brandId}`,
-        sk: 'brand'
+        sk: 'metadata'
       })
     }));
 
@@ -119,9 +119,8 @@ export const getBrandDetailsTool = tool({
     return {
       name: brand.name,
       ethos: brand.ethos,
-      voiceAttributes: brand.voiceAttributes,
-      contentStandards: brand.contentStandards,
-      guardrails: brand.guardrails
+      voiceGuidelines: brand.voiceGuidelines,
+      contentStandards: brand.contentStandards
     };
   }
 });
@@ -153,7 +152,7 @@ export const getPostDetailsTool = tool({
     return {
       topic: post.topic,
       platform: post.platform,
-      scheduledDate: post.scheduledDate,
+      scheduledAt: post.scheduledAt,
       assetRequirements: post.assetRequirements,
       personaId: post.personaId
     };

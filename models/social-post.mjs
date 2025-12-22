@@ -459,7 +459,7 @@ export class SocialPost {
             campaignId,
             personaId: post.personaId,
             platform: post.platform,
-            scheduledAt: post.scheduledDate || post.scheduledAt,
+            scheduledAt: post.scheduledAt,
             topic: post.topic,
             intent: post.intent,
             assetRequirements: post.assetRequirements,
