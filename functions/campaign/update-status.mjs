@@ -7,6 +7,7 @@ import {
   CAMPAIGN_STATUSES
 } from '../../utils/campaign-status.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -14,14 +15,26 @@ export const handler = async (event) => {
     const { campaignId, tenantId, newStatus, reason, error } = detail;
 
     if (!campaignId || !tenantId) {
-      console.error('Missing required parameters:', { campaignId, tenantId });
+      campaignLogger.error('Missing required parameters for campaign status update', {
+        operation: 'update-campaign-status',
+        campaignId,
+        tenantId,
+        errorName: 'ValidationError',
+        errorMessage: 'Missing required parameters'
+      });
       return formatResponse(400, { message: 'Missing required parameters' });
     }
 
     const campaign = await Campaign.findById(tenantId, campaignId);
 
     if (!campaign) {
-      console.error('Campaign not found:', { campaignId, tenantId });
+      campaignLogger.error('Campaign not found for status update', {
+        operation: 'update-campaign-status',
+        tenantId,
+        campaignId,
+        errorName: 'NotFoundError',
+        errorMessage: 'Campaign not found'
+      });
       return formatResponse(404, { message: 'Campaign not found' });
     }
     const currentStatus = campaign.status;
@@ -84,7 +97,13 @@ export const handler = async (event) => {
     });
 
   } catch (err) {
-    console.error('Update campaign status error:', err);
+    campaignLogger.error('Update campaign status operation failed', {
+      operation: 'update-campaign-status',
+      tenantId: event.detail?.tenantId,
+      campaignId: event.detail?.campaignId,
+      errorName: err.name,
+      errorMessage: err.message
+    });
 
     if (err.name === 'ConditionalCheckFailedException') {
       return formatResponse(409, {
@@ -95,5 +114,4 @@ export const handler = async (event) => {
     return formatResponse(500, { message: 'Internal server error' });
   }
 };
-
 

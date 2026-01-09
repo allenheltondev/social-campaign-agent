@@ -747,6 +747,236 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+  /assets:
+    get:
+      summary: List assets
+      description: Retrieves a paginated list of internal assets for the authenticated tenant
+      tags:
+        - Assets
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of assets to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
+        - name: contentType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          description: Filter assets by content type
+        - name: createdAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter assets created after this timestamp
+      responses:
+        200:
+          description: Assets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Asset"
+                  pagination:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                      hasNextPage:
+                        type: boolean
+                      nextToken:
+                        type: string
+                        nullable: true
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListAssetsFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    post:
+      summary: Create asset
+      description: Creates a new internal asset and returns a presigned URL for upload
+      tags:
+        - Assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetRequest"
+      responses:
+        201:
+          description: Asset created successfully with presigned upload URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: Unique asset identifier
+                      contentType:
+                        type: string
+                        description: MIME type of the asset
+                      description:
+                        type: string
+                        description: Asset description
+                      uploadStatus:
+                        type: string
+                        enum: [pending]
+                        description: Current upload status
+                      uploadUrl:
+                        type: string
+                        description: Presigned URL for direct S3 upload
+                      objectKey:
+                        type: string
+                        description: S3 object key for the asset
+                      createdAt:
+                        type: string
+                        format: date-time
+                        description: Asset creation timestamp
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /assets/{assetId}:
+    parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the asset
+    get:
+      summary: Get asset
+      description: Retrieves asset metadata and generates a secure access URL
+      tags:
+        - Assets
+      responses:
+        200:
+          description: Asset retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset:
+                    allOf:
+                      - $ref: "#/components/schemas/Asset"
+                      - type: object
+                        properties:
+                          accessUrl:
+                            type: string
+                            nullable: true
+                            description: Secure time-limited URL for asset access
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    put:
+      summary: Update asset
+      description: Updates asset metadata (description only)
+      tags:
+        - Assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAssetRequest"
+      responses:
+        200:
+          description: Asset updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset:
+                    $ref: "#/components/schemas/Asset"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-request-validator: Validate All
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+    delete:
+      summary: Delete asset
+      description: Deletes an asset and its associated S3 object
+      tags:
+        - Assets
+      responses:
+        204:
+          description: Asset deleted successfully
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteAssetFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
   /campaigns:
     get:
       summary: List campaigns
@@ -2213,3 +2443,170 @@ components:
           format: date-time
         version:
           type: integer
+
+    Asset:
+      type: object
+      required:
+        - id
+        - type
+        - contentType
+        - description
+        - fileSize
+        - objectKey
+        - fileExtension
+        - uploadStatus
+        - usageStats
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          description: Unique asset identifier
+          example: "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        type:
+          type: string
+          enum: [internal]
+          description: Asset type (only internal assets are managed)
+          example: "internal"
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          description: MIME type of the asset
+          example: "image/jpeg"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Asset description explaining content and purpose
+          example: "Product hero image showcasing our new AI analytics dashboard"
+        fileSize:
+          type: integer
+          minimum: 1
+          description: File size in bytes
+          example: 2048576
+        objectKey:
+          type: string
+          description: S3 object key for the asset
+          example: "tenant_123/assets/asset_01ARZ3NDEKTSV4RRFFQ69G5FAV.jpg"
+        fileExtension:
+          type: string
+          description: File extension
+          example: "jpg"
+        uploadStatus:
+          type: string
+          enum: [pending, completed, failed]
+          description: Current upload status
+          example: "completed"
+        usageStats:
+          type: object
+          required:
+            - totalCampaigns
+            - totalPosts
+            - lastUsedAt
+          properties:
+            totalCampaigns:
+              type: integer
+              minimum: 0
+              description: Number of campaigns using this asset
+              example: 3
+            totalPosts:
+              type: integer
+              minimum: 0
+              description: Number of posts using this asset
+              example: 12
+            lastUsedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the asset was last used
+              example: "2024-01-20T14:45:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: When the asset was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the asset was last updated
+          example: "2024-01-20T14:45:00Z"
+        version:
+          type: integer
+          minimum: 1
+          description: Version number for optimistic locking
+          example: 1
+
+    CreateAssetRequest:
+      type: object
+      required:
+        - contentType
+        - description
+        - fileSize
+      properties:
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          description: MIME type of the asset to upload
+          example: "image/jpeg"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Asset description explaining content and purpose
+          example: "Product hero image showcasing our new AI analytics dashboard"
+        fileSize:
+          type: integer
+          minimum: 1
+          maximum: 104857600
+          description: File size in bytes (max 10MB for images, 100MB for videos)
+          example: 2048576
+
+    UpdateAssetRequest:
+      type: object
+      required:
+        - description
+      properties:
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Updated asset description
+          example: "Updated product hero image showcasing our enhanced AI analytics dashboard"
+
+    ExternalAsset:
+      type: object
+      required:
+        - type
+        - url
+        - description
+        - contentType
+        - addedAt
+      properties:
+        type:
+          type: string
+          enum: [external]
+          description: Asset type for external assets
+          example: "external"
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+          description: HTTPS URL of the external asset
+          example: "https://example.com/images/product-hero.jpg"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Asset description explaining content and purpose
+          example: "External product image from company website"
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          description: MIME type of the external asset
+          example: "image/jpeg"
+        addedAt:
+          type: string
+          format: date-time
+          description: When the external asset was added to the campaign
+          example: "2024-01-15T10:30:00Z"

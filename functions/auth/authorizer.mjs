@@ -2,9 +2,7 @@ import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { CognitoIdentityProviderClient, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { Logger } from '@aws-lambda-powertools/logger';
-
-const logger = new Logger({ serviceName: 'auth' });
+import { authLogger } from '../../utils/logger.mjs';
 
 let verifier;
 const cognito = new CognitoIdentityProviderClient();
@@ -20,7 +18,9 @@ export const handler = async (event) => {
 
     const tokenMatch = authorizationToken.match(/^Bearer\s+(.+)$/);
     if (!tokenMatch) {
-      logger.error('Invalid authorization token format');
+      authLogger.error('Invalid authorization token format', {
+        operation: 'token-validation'
+      });
       throw new Error('Unauthorized');
     }
 
@@ -30,7 +30,7 @@ export const handler = async (event) => {
       verifier = CognitoJwtVerifier.create({
         userPoolId: process.env.USER_POOL_ID,
         tokenUse: 'access',
-        clientId: process.env.USER_POOL_CLIENT_ID,
+        clientId: process.env.USER_POOL_CLIENT_ID
       });
     }
 
@@ -40,7 +40,9 @@ export const handler = async (event) => {
     const email = userInfo.email || '';
 
     if (!userId) {
-      logger.error('Missing userId (sub) in user attributes');
+      authLogger.error('Missing userId (sub) in user attributes', {
+        operation: 'user-validation'
+      });
       throw new Error('Unauthorized');
     }
 
@@ -51,7 +53,7 @@ export const handler = async (event) => {
     const context = {
       tenantId,
       userId,
-      email,
+      email
     };
 
     if (activeTeamId) {
@@ -63,9 +65,10 @@ export const handler = async (event) => {
 
     return policy;
   } catch (error) {
-    logger.error('Authorization failed', {
-      error: error.message,
-      stack: error.stack,
+    authLogger.error('Authorization failed', {
+      operation: 'authorization',
+      errorName: error.name,
+      errorMessage: error.message,
       methodArn: event.methodArn
     });
 
@@ -85,9 +88,10 @@ const getUserAttributes = async (accessToken) => {
 
     return attrs;
   } catch (err) {
-    logger.error('Error fetching user attributes', {
-      error: err.message,
-      stack: err.stack
+    authLogger.error('Error fetching user attributes', {
+      operation: 'get-user-attributes',
+      errorName: err.name,
+      errorMessage: err.message
     });
     throw new Error('Failed to fetch user attributes');
   }
@@ -111,9 +115,11 @@ const getUserProfile = async (userId) => {
 
     return unmarshall(response.Item);
   } catch (err) {
-    logger.error('Error fetching user profile', {
-      error: err.message,
-      userId
+    authLogger.error('Error fetching user profile', {
+      operation: 'get-user-profile',
+      userId,
+      errorName: err.name,
+      errorMessage: err.message
     });
     return null;
   }
@@ -121,7 +127,7 @@ const getUserProfile = async (userId) => {
 
 const getApiArnPattern = (methodArn) => {
   const arnParts = methodArn.split('/');
-  return arnParts.slice(0, 2).join('/') + '/*/*';
+  return `${arnParts.slice(0, 2).join('/')}/*/*`;
 };
 
 const generatePolicy = (principalId, effect, resource, context = {}) => {
@@ -133,11 +139,11 @@ const generatePolicy = (principalId, effect, resource, context = {}) => {
         {
           Action: 'execute-api:Invoke',
           Effect: effect,
-          Resource: resource,
-        },
-      ],
+          Resource: resource
+        }
+      ]
     },
-    context,
+    context
   };
 
   return authResponse;

@@ -3,6 +3,7 @@ import { LambdaClient, SendDurableExecutionCallbackSuccessCommand } from '@aws-s
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const lambda = new LambdaClient();
@@ -22,16 +23,15 @@ export const handler = async (event) => {
       return formatResponse(405, { message: 'Method not allowed' });
     }
 
-    if (!event.pathParameters?.campaignId) {
+    const campaignId = event.pathParameters?.campaignId;
+    if (!campaignId) {
       return formatResponse(400, { message: 'Campaign ID is required' });
     }
 
-    if (!event.queryStringParameters?.callbackId) {
+    const callbackId = event.queryStringParameters?.callbackId;
+    if (!callbackId) {
       return formatResponse(400, { message: 'Invalid callback ID' });
     }
-
-    const { campaignId } = event.pathParameters;
-    const { callbackId } = event.queryStringParameters;
     const tenantId = event.requestContext?.authorizer?.tenantId || 'test-tenant';
 
     const response = await ddb.send(new GetItemCommand({
@@ -69,7 +69,13 @@ export const handler = async (event) => {
     });
 
   } catch (error) {
-    console.error('Approval callback failed', error);
+    campaignLogger.error('Approval callback failed', {
+      operation: 'approval-callback',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.name === 'ZodError') {
       return formatResponse(400, { message: 'Invalid request data' });

@@ -1,12 +1,11 @@
 import { Campaign } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import {
-  isValidStatusTransition,
   validateStatusTransition,
   publishStatusTransition,
-  createErrorTracking,
   getUpdatePermissions as getStatusUpdatePermissions
 } from '../../utils/campaign-status.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -73,7 +72,13 @@ export const handler = async (event) => {
     return formatResponse(200, updatedCampaign);
 
   } catch (err) {
-    console.error('Update campaign error:', err);
+    campaignLogger.error('Update campaign operation failed', {
+      operation: 'update-campaign',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      errorName: err.name,
+      errorMessage: err.message
+    });
 
     if (err.name === 'ZodError') {
       return formatResponse(400, {
@@ -89,8 +94,6 @@ export const handler = async (event) => {
     return formatResponse(500, { message: 'Something went wrong' });
   }
 };
-
-
 
 function filterUpdateData(updateData, permissions) {
   const filtered = {};

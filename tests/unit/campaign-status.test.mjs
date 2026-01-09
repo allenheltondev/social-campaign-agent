@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CAMPAIGN_STATUSES,
-  STATUS_TRANSITIONS,
   isValidStatusTransition,
   getNextStatusFromPosts,
   createStatusTransitionEvent,

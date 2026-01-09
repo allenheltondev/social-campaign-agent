@@ -71,202 +71,148 @@ const inputSchema = z.object({
 
 export const handler = withDurableExecution(
   async (event, context) => {
-    try {
-      const validatedInput = inputSchema.parse(event);
-      const { tenantId, campaign } = validatedInput;
+    const validatedInput = inputSchema.parse(event);
+    const { tenantId, campaign } = validatedInput;
 
-      console.log('Starting campaign workflow', {
-        executionId: context.executionId,
-        tenantId,
-        campaignId: campaign.id
-      });
-
-      const campaignSaved = await context.step('Save campaign', async () => {
-        try {
-          await Campaign.save(tenantId, {
-            id: campaign.id,
-            tenantId,
-            brandId: campaign.brandId || null,
-            name: campaign.name,
-            brief: campaign.brief,
-            participants: campaign.participants,
-            schedule: campaign.schedule,
-            cadenceOverrides: campaign.cadenceOverrides || null,
-            messaging: campaign.messaging || null,
-            assetOverrides: campaign.assetOverrides || null,
-            status: 'planning',
-            metadata: campaign.metadata || { source: 'api', externalRef: null },
-          });
-          return true;
-        } catch (err) {
-          if (err.name === 'ConditionalCheckFailedException') {
-            return false;
-          }
-          throw err;
-        }
-      }, {
-        retryPolicy: {
-          maxAttempts: 3,
-          backoffCoefficient: 2.0,
-          initialInterval: 1000,
-          maximumInterval: 30000
-        }
-      });
-
-      if (!campaignSaved) {
-        console.log('Campaign already exists, skipping workflow');
-        return {
-          success: false,
-          message: 'Campaign already exists'
-        };
-      }
-
-      const planResults = await context.step('Generate campaign plan', async () => {
-        try {
-          const result = await campaignPlannerRun(tenantId, {
-            campaignId: campaign.id,
-            campaign
-          });
-
-          if (!result.success) {
-            throw new Error(result.message || 'Campaign planning failed');
-          }
-
-          if (!result.posts || !Array.isArray(result.posts)) {
-            throw new Error('Invalid post plan structure returned from planner');
-          }
-
-          return result;
-        } catch (err) {
-          throw err;
-        }
-      }, {
-        retryPolicy: {
-          maxAttempts: 1,
-          backoffCoefficient: 2.0,
-          initialInterval: 2000,
-          maximumInterval: 60000
-        }
-      });
-
-      console.log(JSON.stringify(planResults));
-
-      let contentResults = await context.map(planResults.posts || [],
-        async (ctx, post, index) => {
-          return await ctx.step(`Update post ${index} status to generating`, async () => {
-            await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'generating');
-
-            const result = await contentGeneratorRun(tenantId, {
-              campaignId: campaign.id,
-              postId: post.id,
-              post
-            });
-
-            console.log(result);
-
-            if (!result.success) {
-              throw new Error(`Content generation failed for post ${post.id}: ${result.message || 'Content generation failed'}`);
-            }
-
-            await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'completed');
-
-            return {
-              postId: post.id,
-              success: true,
-              content: result.content
-            };
-          });
-        },
-        {
-          maxConcurrency: 1,
-          completionPolicy: 'all',
-          retryPolicy: {
-            maxAttempts: 2,
-            backoffCoefficient: 1.5,
-            initialInterval: 1000,
-            maximumInterval: 10000
-          }
-        }
-      );
-      if (!contentResults) contentResults = [];
-      console.log(JSON.stringify(contentResults));
-      const successfulPosts = contentResults.filter(result => result.success);
-      const failedPosts = contentResults.filter(result => !result.success);
-
-      console.log('Content generation summary', {
-        totalPosts: contentResults.length,
-        successful: successfulPosts.length,
-        failed: failedPosts.length,
-        failedPostIds: failedPosts.map(p => p.postId)
-      });
-
-      let finalStatus = 'needs_revision';
-      if (successfulPosts.length) {
-        const result = await context.waitForCallback('Wait for approval', async (callbackId) => {
-          await Campaign.update(tenantId, campaign.id, {
-            status: 'awaiting_review',
-            callbackId
-          });
-        }, { timeout: { hours: 24 } });
-
-
-        await context.step('Complete campaign', async () => {
-          switch (result.toLowerCase()) {
-            case 'approved':
-              finalStatus = 'approved';
-              break;
-            case 'rejected':
-              finalStatus = 'rejected';
-              break;
-            case 'timeout':
-              finalStatus = 'approval_timeout';
-              break;
-            default:
-              finalStatus = 'needs_revision';
-          }
+    const campaignSaved = await context.step('Save campaign', async () => {
+      try {
+        await Campaign.save(tenantId, {
+          id: campaign.id,
+          tenantId,
+          brandId: campaign.brandId || null,
+          name: campaign.name,
+          brief: campaign.brief,
+          participants: campaign.participants,
+          schedule: campaign.schedule,
+          cadenceOverrides: campaign.cadenceOverrides || null,
+          messaging: campaign.messaging || null,
+          assetOverrides: campaign.assetOverrides || null,
+          status: 'planning',
+          metadata: campaign.metadata || { source: 'api', externalRef: null }
         });
+        return true;
+      } catch (err) {
+        if (err.name === 'ConditionalCheckFailedException') {
+          return false;
+        }
+        throw err;
+      }
+    }, {
+      retryPolicy: {
+        maxAttempts: 3,
+        backoffCoefficient: 2.0,
+        initialInterval: 1000,
+        maximumInterval: 30000
+      }
+    });
+
+    if (!campaignSaved) {
+      return {
+        success: false,
+        message: 'Campaign already exists'
+      };
+    }
+
+    const planResults = await context.step('Generate campaign plan', async () => {
+      const planningResults = await campaignPlannerRun(tenantId, {
+        campaignId: campaign.id,
+        campaign
+      });
+
+      if (!planningResults.success) {
+        throw new Error(planningResults.message || 'Campaign planning failed');
       }
 
-      await Campaign.update(tenantId, campaign.id, {
-        status: finalStatus,
-        callbackId: null
-      });
+      if (!planningResults.posts || !Array.isArray(planningResults.posts)) {
+        throw new Error('Invalid post plan structure returned from planner');
+      }
 
-      return {
-        success: true,
-        campaignId: campaign.id,
-        planResults,
-        contentResults,
-        approvalDecision: result
-      };
+      return planningResults;
+    }, {
+      retryPolicy: {
+        maxAttempts: 1,
+        backoffCoefficient: 2.0,
+        initialInterval: 2000,
+        maximumInterval: 60000
+      }
+    });
 
-    } catch (error) {
-      console.error('Workflow failed', {
-        executionId: context.executionId,
-        tenantId: event.tenantId,
-        campaignId: event.campaign?.id,
-        error: error.message,
-        stack: error.stack
-      });
+    let contentResults = await context.map(planResults.posts || [],
+      async (ctx, post, index) => {
+        return await ctx.step(`Update post ${index} status to generating`, async () => {
+          await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'generating');
 
-      if (event.tenantId && event.campaign?.id) {
-        try {
-          const now = new Date().toISOString();
-          await Campaign.update(event.tenantId, event.campaign.id, {
-            status: 'failed',
-            lastError: {
-              code: 'CAMPAIGN_PLANNING_FAILED',
-              message: error.message || 'Campaign planning workflow failed',
-              at: now,
-              retryable: false
-            }
+          const contentGenerationResults = await contentGeneratorRun(tenantId, {
+            campaignId: campaign.id,
+            postId: post.id,
+            post
           });
-        } catch (updateError) {
-          console.error('Failed to update campaign status after error', updateError);
+
+          if (!contentGenerationResults.success) {
+            throw new Error(`Content generation failed for post ${post.id}: ${contentGenerationResults.message || 'Content generation failed'}`);
+          }
+
+          await SocialPost.updateStatus(tenantId, campaign.id, post.id, 'completed');
+
+          return {
+            postId: post.id,
+            success: true,
+            content: contentGenerationResults.content
+          };
+        });
+      },
+      {
+        maxConcurrency: 1,
+        completionPolicy: 'all',
+        retryPolicy: {
+          maxAttempts: 2,
+          backoffCoefficient: 1.5,
+          initialInterval: 1000,
+          maximumInterval: 10000
         }
       }
+    );
+    if (!contentResults) contentResults = [];
+    const successfulPosts = contentResults.filter(result => result.success);
 
-      throw error;
+    let finalStatus = 'needs_revision';
+    let approvalResults = null;
+    if (successfulPosts.length) {
+      approvalResults = await context.waitForCallback('Wait for approval', async (callbackId) => {
+        await Campaign.update(tenantId, campaign.id, {
+          status: 'awaiting_review',
+          callbackId
+        });
+      }, { timeout: { hours: 24 } });
+
+      await context.step('Complete campaign', async () => {
+        switch (approvalResults.toLowerCase()) {
+          case 'approved':
+            finalStatus = 'approved';
+            break;
+          case 'rejected':
+            finalStatus = 'rejected';
+            break;
+          case 'timeout':
+            finalStatus = 'approval_timeout';
+            break;
+          default:
+            finalStatus = 'needs_revision';
+        }
+      });
     }
+
+    await Campaign.update(tenantId, campaign.id, {
+      status: finalStatus,
+      callbackId: null
+    });
+
+    return {
+      success: true,
+      campaignId: campaign.id,
+      planResults,
+      contentResults,
+      approvalDecision: approvalResults
+    };
   }
 );

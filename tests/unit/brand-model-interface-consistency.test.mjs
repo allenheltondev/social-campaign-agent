@@ -32,13 +32,13 @@ describe('Brand Model Interface Consistency', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId: fc.string({ minLength: 1, maxLength: 50 }),
-          brandId: fc.string({ minLength: 1, maxLength: 50 }),
-          name: fc.string({ minLength: 1, maxLength: 100 }),
-          ethos: fc.string({ minLength: 1, maxLength: 1000 }),
-          coreValues: fc.array(fc.string({ minLength: 1, maxLength: 200 }), { minLength: 1, maxLength: 10 }),
+          tenantId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          brandId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          name: fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0),
+          ethos: fc.string({ minLength: 1, maxLength: 1000 }).filter(s => s.trim().length > 0),
+          coreValues: fc.array(fc.string({ minLength: 1, maxLength: 200 }).filter(s => s.trim().length > 0), { minLength: 1, maxLength: 10 }),
           primaryAudience: fc.constantFrom('executives', 'professionals', 'consumers', 'technical', 'creative'),
-          status: fc.constantFrom('active', 'inactive', 'archived')
+          status: fc.constantFrom('active', 'inactive')
         }),
         async (testData) => {
           expect(typeof Brand.findById).toBe('function');

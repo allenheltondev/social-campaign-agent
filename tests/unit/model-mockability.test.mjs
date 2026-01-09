@@ -135,7 +135,9 @@ describe('Model Mockability for Testing', () => {
 
           mockModel.findById.mockRejectedValue(testError);
           mockModel.save.mockRejectedValue(testError);
-          mockModel.validateEntity.mockImplementation(() => { throw testError; });
+          mockModel.validateEntity.mockImplementation(() => {
+            throw testError;
+          });
 
           // Test that errors are properly thrown
           await expect(mockModel.findById('tenant', 'id')).rejects.toThrow(errorMessage);

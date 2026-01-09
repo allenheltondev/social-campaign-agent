@@ -1,5 +1,6 @@
 import { Persona, UpdatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { personaLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -28,7 +29,13 @@ export const handler = async (event) => {
 
     return formatResponse(200, updatedPersona);
   } catch (error) {
-    console.error('Update persona error:', error);
+    personaLogger.error('Update persona operation failed', {
+      operation: 'updatePersona',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.message.includes('Validation error')) {
       return formatResponse(400, { message: error.message });

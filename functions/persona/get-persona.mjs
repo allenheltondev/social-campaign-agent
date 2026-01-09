@@ -1,5 +1,6 @@
 import { Persona } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { personaLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -22,7 +23,13 @@ export const handler = async (event) => {
 
     return formatResponse(200, persona);
   } catch (error) {
-    console.error('Get persona error:', error);
+    personaLogger.error('Get persona operation failed', {
+      operation: 'getPersona',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

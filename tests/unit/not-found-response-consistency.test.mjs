@@ -63,11 +63,11 @@ describe('Not Found Response Consistency', () => {
 
             results.push({
               modelName: name,
-              result: result
+              result
             });
           }
 
-          results.forEach(({ modelName, result }) => {
+          results.forEach(({ modelName: _modelName, result }) => {
             expect(result).toBeNull();
           });
 
@@ -116,11 +116,11 @@ describe('Not Found Response Consistency', () => {
 
             results.push({
               modelName: name,
-              result: result
+              result
             });
           }
 
-          results.forEach(({ modelName, result }) => {
+          results.forEach(({ modelName: _modelName, result }) => {
             expect(result).toBeNull();
           });
 

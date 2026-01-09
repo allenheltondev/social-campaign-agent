@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest --run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:check": "eslint . --max-warnings 0",
     "sam:build": "sam build",
     "sam:deploy": "sam deploy --guided",
     "sam:local": "sam local start-api"
@@ -28,6 +30,7 @@
     "@aws-sdk/client-lambda": "^3.952.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/util-dynamodb": "^3.0.0",
+    "@eslint/js": "^9.39.2",
     "aws-sdk-client-mock": "^4.0.0",
     "dotenv": "^16.0.0",
     "eslint": "^8.0.0",

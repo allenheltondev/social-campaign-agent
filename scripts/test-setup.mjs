@@ -13,7 +13,6 @@ import {
   AdminGetUserCommand
 } from '@aws-sdk/client-cognito-identity-provider';
 
-// Load environment variables
 config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,7 +24,6 @@ const cognito = new CognitoIdentityProviderClient({
   profile: process.env.AWS_PROFILE
 });
 
-// Configuration from environment variables
 const CONFIG = {
   userPoolId: process.env.COGNITO_USER_POOL_ID,
   clientId: process.env.COGNITO_CLIENT_ID,
@@ -79,13 +77,11 @@ async function createAdminUser() {
   console.log(`🏢 Tenant ID: ${CONFIG.tenantId}`);
 
   try {
-    // Build user attributes - start with required attributes
     const userAttributes = [
       { Name: 'email', Value: CONFIG.username },
       { Name: 'email_verified', Value: 'true' }
     ];
 
-    // Add optional standard attributes if provided
     if (CONFIG.givenName) {
       userAttributes.push({ Name: 'given_name', Value: CONFIG.givenName });
     }
@@ -93,7 +89,6 @@ async function createAdminUser() {
       userAttributes.push({ Name: 'family_name', Value: CONFIG.familyName });
     }
 
-    // Add custom tenantId attribute (defined in your User Pool schema)
     if (CONFIG.tenantId) {
       userAttributes.push({ Name: 'custom:tenantId', Value: CONFIG.tenantId });
     }
@@ -103,7 +98,7 @@ async function createAdminUser() {
       Username: CONFIG.username,
       UserAttributes: userAttributes,
       TemporaryPassword: CONFIG.tempPassword,
-      MessageAction: 'SUPPRESS' // Don't send welcome email for testing
+      MessageAction: 'SUPPRESS'
     });
 
     const result = await cognito.send(command);
@@ -153,8 +148,8 @@ async function loginUser() {
         ChallengeResponses: {
           USERNAME: CONFIG.username,
           NEW_PASSWORD: CONFIG.newPassword,
-          "userAttributes.given_name": CONFIG.givenName,
-          "userAttributes.family_name": CONFIG.familyName
+          'userAttributes.given_name': CONFIG.givenName,
+          'userAttributes.family_name': CONFIG.familyName
         },
         Session: response.Session
       });
@@ -182,21 +177,17 @@ function updateEnvFile(token) {
     envContent = readFileSync(envPath, 'utf8');
   }
 
-  // Remove existing ACCESS_TOKEN line if present
   const lines = envContent.split('\n').filter(line =>
     !line.startsWith('ACCESS_TOKEN=') && !line.startsWith('# ACCESS_TOKEN=')
   );
 
-  // Add the new token
   lines.push(`ACCESS_TOKEN=${token}`);
 
-  // Add API_URL if not present and we have it configured
   if (CONFIG.apiUrl && !lines.some(line => line.startsWith('API_URL='))) {
     lines.push(`API_URL=${CONFIG.apiUrl}`);
   }
 
-  // Write back to file
-  writeFileSync(envPath, lines.join('\n') + '\n');
+  writeFileSync(envPath, `${lines.join('\n')}\n`);
   console.log('💾 Access token saved to .env file');
 }
 

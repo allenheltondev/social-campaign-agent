@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 
 config();
 
-const API_URL = process.env.API_URL;
+const {API_URL} = process.env;
 const envContent = readFileSync('.env', 'utf8');
 const tokenMatch = envContent.match(/ACCESS_TOKEN=(.+)/);
 const ACCESS_TOKEN = tokenMatch ? tokenMatch[1].trim() : null;

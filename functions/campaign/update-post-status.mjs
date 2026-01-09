@@ -1,6 +1,7 @@
 import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { z } from 'zod';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 const updatePostStatusSchema = z.object({
   status: z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review']),
@@ -83,7 +84,14 @@ export const handler = async (event) => {
       });
     }
 
-    console.error('Update post status error:', error);
+    campaignLogger.error('Update post status operation failed', {
+      operation: 'update-post-status',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      postId: event.pathParameters?.postId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

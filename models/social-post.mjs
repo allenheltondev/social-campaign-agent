@@ -2,6 +2,7 @@ import { DynamoDBClient, GetItemCommand, PutItemCommand, QueryCommand, UpdateIte
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import { campaignLogger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -15,37 +16,6 @@ const ErrorTrackingSchema = z.object({
   at: z.iso.datetime(),
   retryable: z.boolean()
 }).nullable();
-
-const SocialPostInternalSchema = z.object({
-  postId: z.string(),
-  campaignId: z.string(),
-  tenantId: z.string(),
-  personaId: z.string(),
-  platform: PlatformSchema,
-  scheduledAt: z.iso.datetime(),
-  topic: z.string().min(1).max(500),
-  intent: IntentSchema,
-  assetRequirements: z.object({
-    imageRequired: z.boolean(),
-    imageDescription: z.string().optional(),
-    videoRequired: z.boolean(),
-    videoDescription: z.string().optional()
-  }).optional(),
-  content: z.object({
-    text: z.string(),
-    hashtags: z.array(z.string()).optional(),
-    mentions: z.array(z.string()).optional(),
-    generatedAt: z.iso.datetime()
-  }).optional(),
-  references: z.array(z.object({
-    type: z.enum(['url', 'assetId']),
-    value: z.string()
-  })).optional(),
-  status: PostStatusSchema,
-  lastError: ErrorTrackingSchema,
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime()
-});
 
 export const SocialPostSchema = z.object({
   id: z.string(),
@@ -144,7 +114,9 @@ export class SocialPost {
       const rawPost = unmarshall(response.Item);
       return this._transformFromDynamoDB(rawPost);
     } catch (error) {
-      console.error('SocialPost findById failed', {
+      campaignLogger.error('SocialPost findById failed', {
+        operation: 'findById',
+        tenantId,
         postId,
         campaignId,
         errorName: error.name,
@@ -198,7 +170,9 @@ export class SocialPost {
         }
       };
     } catch (error) {
-      console.error('SocialPost findByCampaign failed', {
+      campaignLogger.error('SocialPost findByCampaign failed', {
+        operation: 'findByCampaign',
+        tenantId,
         campaignId,
         platform,
         errorName: error.name,
@@ -252,7 +226,9 @@ export class SocialPost {
         }
       };
     } catch (error) {
-      console.error('SocialPost findByPersona failed', {
+      campaignLogger.error('SocialPost findByPersona failed', {
+        operation: 'findByPersona',
+        tenantId,
         personaId,
         campaignId,
         errorName: error.name,
@@ -276,7 +252,6 @@ export class SocialPost {
     cleanPost.id = cleanPost.postId;
     delete cleanPost.postId;
 
-    // Convert null values to undefined for optional fields
     if (cleanPost.references === null) {
       delete cleanPost.references;
     }
@@ -334,7 +309,9 @@ export class SocialPost {
 
       return this._transformFromDynamoDB(dynamoItem);
     } catch (error) {
-      console.error('SocialPost save failed', {
+      campaignLogger.error('SocialPost save failed', {
+        operation: 'save',
+        tenantId,
         postId: post.id || post.postId,
         campaignId,
         errorName: error.name,
@@ -379,7 +356,9 @@ export class SocialPost {
 
       return await this.findById(tenantId, campaignId, postId);
     } catch (error) {
-      console.error('SocialPost update failed', {
+      campaignLogger.error('SocialPost update failed', {
+        operation: 'update',
+        tenantId,
         postId,
         campaignId,
         errorName: error.name,
@@ -407,7 +386,9 @@ export class SocialPost {
         post: updatedPost
       };
     } catch (error) {
-      console.error('SocialPost updateStatus failed', {
+      campaignLogger.error('SocialPost updateStatus failed', {
+        operation: 'updateStatus',
+        tenantId,
         postId,
         campaignId,
         status,
@@ -434,7 +415,9 @@ export class SocialPost {
         post: updatedPost
       };
     } catch (error) {
-      console.error('SocialPost updateContent failed', {
+      campaignLogger.error('SocialPost updateContent failed', {
+        operation: 'updateContent',
+        tenantId,
         postId,
         campaignId,
         errorName: error.name,
@@ -496,9 +479,10 @@ export class SocialPost {
         posts: createdPosts
       };
     } catch (err) {
-      console.error('Failed to create social posts', {
-        campaignId,
+      campaignLogger.error('Failed to create social posts', {
+        operation: 'createPostsForCampaign',
         tenantId,
+        campaignId,
         totalPosts: posts.length,
         postsCreatedBeforeError: createdPosts.length,
         errorName: err.name,

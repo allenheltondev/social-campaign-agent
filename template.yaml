@@ -580,6 +580,45 @@ Resources:
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 7
 
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+        LambdaConfigurations:
+          EventBridgeEnabled: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - POST
+            AllowedOrigins:
+              - "*"
+            ExposedHeaders:
+              - "ETag"
+            MaxAge: 3000
+
   CreateBrandFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -903,9 +942,15 @@ Resources:
             - Effect: Allow
               Action: events:PutEvents
               Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "${AssetsBucket.Arn}/*"
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
+          ASSETS_BUCKET: !Ref AssetsBucket
+          PRESIGNED_URL_EXPIRY_SECONDS: 900
           # MODEL_ID: us.amazon.nova-pro-v1:0
 
   ApprovalCallbackFunction:
@@ -1165,6 +1210,226 @@ Resources:
               source: ["campaign-planner", "content-generator"]
               detail-type: ["Campaign Planning Completed", "Campaign Planning Failed", "Content Generation Completed", "Content Generation Failed"]
 
+  CreateAssetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/create-asset.mjs
+    Properties:
+      Handler: assets/create-asset.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:GetItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:GetObject
+              Resource: !Sub "${AssetsBucket.Arn}/*"
+            - Effect: Allow
+              Action:
+                - s3:GetBucketLocation
+              Resource: !GetAtt AssetsBucket.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          ASSETS_BUCKET: !Ref AssetsBucket
+          MAX_UPLOAD_SIZE_MB: 100
+          PRESIGNED_URL_EXPIRY_SECONDS: 900
+      Events:
+        CreateAsset:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets
+            Method: POST
+
+  GetAssetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/get-asset.mjs
+    Properties:
+      Handler: assets/get-asset.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "${AssetsBucket.Arn}/*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          ASSETS_BUCKET: !Ref AssetsBucket
+          PRESIGNED_URL_EXPIRY_SECONDS: 900
+          ENABLE_ACCESS_LOGGING: true
+      Events:
+        GetAsset:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets/{assetId}
+            Method: GET
+
+  UpdateAssetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/update-asset.mjs
+    Properties:
+      Handler: assets/update-asset.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        UpdateAsset:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets/{assetId}
+            Method: PUT
+
+  DeleteAssetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/delete-asset.mjs
+    Properties:
+      Handler: assets/delete-asset.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+                - !Sub "${PersonaTable.Arn}/index/GSI2"
+            - Effect: Allow
+              Action:
+                - s3:DeleteObject
+              Resource: !Sub "${AssetsBucket.Arn}/*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          ASSETS_BUCKET: !Ref AssetsBucket
+          ENABLE_CAMPAIGN_REFERENCE_CHECK: true
+      Events:
+        DeleteAsset:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets/{assetId}
+            Method: DELETE
+
+  ListAssetsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/list-assets.mjs
+    Properties:
+      Handler: assets/list-assets.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/GSI1"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ListAssets:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets
+            Method: GET
+
+  AssetUploadCompleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/upload-complete.mjs
+    Properties:
+      Handler: assets/upload-complete.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAttributes
+              Resource: !Sub "${AssetsBucket.Arn}/*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+          ASSETS_BUCKET: !Ref AssetsBucket
+      Events:
+        S3Upload:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref AssetsBucket
+
 
 
 Outputs:
@@ -1183,3 +1448,11 @@ Outputs:
   UserPoolDomain:
     Description: Cognito User Pool Domain
     Value: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+
+  AssetsBucket:
+    Description: S3 bucket for asset storage
+    Value: !Ref AssetsBucket
+
+  AssetAccessLogsBucket:
+    Description: S3 bucket for asset access logs
+    Value: !Ref AssetAccessLogsBucket

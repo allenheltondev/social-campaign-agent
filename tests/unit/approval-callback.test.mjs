@@ -32,25 +32,30 @@ describe('Approval Callback Handler', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const module = await import('../../functions/campaign/approval-callback.mjs');
-    handler = module.handler;
+    const { handler: importedHandler } = await import('../../functions/campaign/approval-callback.mjs');
+    handler = importedHandler;
   });
 
-  const createEvent = (overrides = {}) => ({
-    httpMethod: 'POST',
-    pathParameters: { campaignId: 'test-campaign' },
-    queryStringParameters: { callbackId: 'test-callback-id' },
-    requestContext: {
-      authorizer: {
-        tenantId: 'test-tenant'
-      }
-    },
-    body: JSON.stringify({
-      decision: 'approved',
-      comments: 'Looks good'
-    }),
-    ...overrides
-  });
+  const createEvent = (options = {}) => {
+    const { pathParameters, queryStringParameters, requestContext, body, ...overrides } = options;
+    return {
+      httpMethod: 'POST',
+      pathParameters: { campaignId: 'test-campaign', ...pathParameters },
+      queryStringParameters: { callbackId: 'test-callback-id', ...queryStringParameters },
+      requestContext: {
+        authorizer: {
+          tenantId: 'test-tenant',
+          ...requestContext?.authorizer
+        },
+        ...requestContext
+      },
+      body: body || JSON.stringify({
+        decision: 'approved',
+        comments: 'Looks good'
+      }),
+      ...overrides
+    };
+  };
 
   it('should handle OPTIONS requests', async () => {
     const event = {
@@ -77,7 +82,7 @@ describe('Approval Callback Handler', () => {
   });
 
   it('should reject missing callback ID', async () => {
-    const event = createEvent({ queryStringParameters: {} });
+    const event = createEvent({ queryStringParameters: { callbackId: undefined } });
     const result = await handler(event);
 
     expect(result.statusCode).toBe(400);
@@ -85,7 +90,7 @@ describe('Approval Callback Handler', () => {
   });
 
   it('should reject missing campaign ID', async () => {
-    const event = createEvent({ pathParameters: {} });
+    const event = createEvent({ pathParameters: { campaignId: undefined } });
     const result = await handler(event);
 
     expect(result.statusCode).toBe(400);

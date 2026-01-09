@@ -1,6 +1,7 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 import { formatResponse } from '../../../utils/api-response.mjs';
+import { personaLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -50,7 +51,14 @@ export const handler = async (event) => {
 
     return formatResponse(204);
   } catch (error) {
-    console.error('Delete example error:', error);
+    personaLogger.error('Delete example failed', {
+      operation: 'delete-example',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      exampleId: event.pathParameters?.exampleId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.name === 'ConditionalCheckFailedException') {
       return formatResponse(404, { message: 'Writing example not found' });

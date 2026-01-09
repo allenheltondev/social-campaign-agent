@@ -1,6 +1,7 @@
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { CreateCampaignRequestSchema, validateRequestBody, generateCampaignId } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 const lambda = new LambdaClient();
 
@@ -15,7 +16,6 @@ export const handler = async (event) => {
     const requestData = validateRequestBody(CreateCampaignRequestSchema, event.body);
 
     const campaignId = generateCampaignId();
-    const now = new Date().toISOString();
 
     const campaign = {
       id: campaignId,
@@ -44,6 +44,10 @@ export const handler = async (event) => {
       campaign.assetOverrides = requestData.assetOverrides;
     }
 
+    if (requestData.assets) {
+      campaign.assets = requestData.assets;
+    }
+
     if (requestData.metadata) {
       campaign.metadata = requestData.metadata;
     } else {
@@ -65,7 +69,12 @@ export const handler = async (event) => {
       message: 'Campaign creation initiated'
     });
   } catch (error) {
-    console.error('Create campaign error:', error);
+    campaignLogger.error('Create campaign operation failed', {
+      operation: 'create-campaign',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.message.includes('Validation error')) {
       return formatResponse(400, { message: error.message });

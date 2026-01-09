@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { SocialPost } from '../../models/social-post.mjs';
+import { agentLogger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -34,17 +35,17 @@ export const createSocialPostsTool = tool({
   callback: async (input) => {
     try {
       const { campaignId, tenantId, posts } = input;
-      console.log('Creating social posts:', { campaignId, tenantId, postCount: posts.length });
 
-      const result = await SocialPost.createSocialPosts(campaignId, tenantId, posts);
+      const socialPostsCreationResult = await SocialPost.createSocialPosts(campaignId, tenantId, posts);
 
-      console.log('Social posts created:', result);
-
-      return result;
+      return socialPostsCreationResult;
     } catch (error) {
-      console.error('Tool execution error:', {
-        message: error.message,
-        stack: error.stack
+      agentLogger.error('Tool execution operation failed', {
+        operation: 'createSocialPosts',
+        tenantId: input.tenantId,
+        campaignId: input.campaignId,
+        errorName: error.name,
+        errorMessage: error.message
       });
 
       return {
@@ -65,7 +66,7 @@ export const getPersonaDetailsTool = tool({
   callback: async (input) => {
     const { personaId, tenantId } = input;
 
-    const result = await ddb.send(new GetItemCommand({
+    const personaQueryResult = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
         pk: `${tenantId}#${personaId}`,
@@ -73,11 +74,11 @@ export const getPersonaDetailsTool = tool({
       })
     }));
 
-    if (!result.Item) {
+    if (!personaQueryResult.Item) {
       throw new Error(`Persona ${personaId} not found`);
     }
 
-    const persona = unmarshall(result.Item);
+    const persona = unmarshall(personaQueryResult.Item);
     return {
       name: persona.name,
       role: persona.role,
@@ -103,7 +104,7 @@ export const getBrandDetailsTool = tool({
   callback: async (input) => {
     const { brandId, tenantId } = input;
 
-    const result = await ddb.send(new GetItemCommand({
+    const brandQueryResult = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
         pk: `${tenantId}#${brandId}`,
@@ -111,11 +112,11 @@ export const getBrandDetailsTool = tool({
       })
     }));
 
-    if (!result.Item) {
+    if (!brandQueryResult.Item) {
       return null;
     }
 
-    const brand = unmarshall(result.Item);
+    const brand = unmarshall(brandQueryResult.Item);
     return {
       name: brand.name,
       ethos: brand.ethos,
@@ -136,7 +137,7 @@ export const getPostDetailsTool = tool({
   callback: async (input) => {
     const { postId, campaignId, tenantId } = input;
 
-    const result = await ddb.send(new GetItemCommand({
+    const postQueryResult = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
         pk: `${tenantId}#${campaignId}`,
@@ -144,11 +145,11 @@ export const getPostDetailsTool = tool({
       })
     }));
 
-    if (!result.Item) {
+    if (!postQueryResult.Item) {
       throw new Error(`Post ${postId} not found`);
     }
 
-    const post = unmarshall(result.Item);
+    const post = unmarshall(postQueryResult.Item);
     return {
       topic: post.topic,
       platform: post.platform,
@@ -169,7 +170,7 @@ export const getCampaignDetailsTool = tool({
   callback: async (input) => {
     const { campaignId, tenantId } = input;
 
-    const result = await ddb.send(new GetItemCommand({
+    const campaignQueryResult = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
         pk: `${tenantId}#${campaignId}`,
@@ -177,11 +178,11 @@ export const getCampaignDetailsTool = tool({
       })
     }));
 
-    if (!result.Item) {
+    if (!campaignQueryResult.Item) {
       throw new Error(`Campaign ${campaignId} not found`);
     }
 
-    const campaign = unmarshall(result.Item);
+    const campaign = unmarshall(campaignQueryResult.Item);
     return {
       description: campaign.description,
       brandId: campaign.brandId
@@ -233,13 +234,13 @@ export const saveGeneratedContentTool = tool({
         status: 'completed'
       };
     } catch (error) {
-      console.error('Failed to save generated content', {
-        postId: input.postId,
-        campaignId: input.campaignId,
+      agentLogger.error('Failed to save generated content', {
+        operation: 'saveGeneratedContent',
         tenantId: input.tenantId,
+        campaignId: input.campaignId,
+        postId: input.postId,
         errorName: error.name,
-        errorMessage: error.message,
-        errorCode: error.$metadata?.httpStatusCode
+        errorMessage: error.message
       });
       return {
         success: false,
@@ -323,7 +324,13 @@ export const saveStyleAnalysisTool = tool({
       return `Successfully saved style analysis for persona ${personaId}.`;
 
     } catch (error) {
-      console.error('Error saving style analysis:', error);
+      agentLogger.error('Error saving style analysis', {
+        operation: 'saveStyleAnalysis',
+        tenantId: input.tenantId,
+        personaId: input.personaId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
       return `Failed to save style analysis: ${error.message}`;
     }
   }

@@ -3,6 +3,7 @@ import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { personaLogger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const eventBridge = new EventBridgeClient();
@@ -13,12 +14,6 @@ const triggerAnalysisSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required')
 });
 
-/**
- * Validate that persona exists and belongs to tenant
- * @param {string} tenantId - Tenant identifier
- * @param {string} personaId - Persona identifier
- * @returns {Object} Persona data if valid
- */
 async function validatePersona(tenantId, personaId) {
   const getParams = {
     TableName: process.env.TABLE_NAME,
@@ -28,13 +23,13 @@ async function validatePersona(tenantId, personaId) {
     })
   };
 
-  const result = await ddb.send(new GetItemCommand(getParams));
+  const personaResponse = await ddb.send(new GetItemCommand(getParams));
 
-  if (!result.Item) {
+  if (!personaResponse.Item) {
     throw new Error(`Persona ${personaId} not found for tenant ${tenantId}`);
   }
 
-  const persona = unmarshall(result.Item);
+  const persona = unmarshall(personaResponse.Item);
 
   if (!persona.isActive) {
     throw new Error(`Persona ${personaId} is not active`);
@@ -43,12 +38,6 @@ async function validatePersona(tenantId, personaId) {
   return persona;
 }
 
-/**
- * Validate that sufficient writing examples exist
- * @param {string} tenantId - Tenant identifier
- * @param {string} personaId - Persona identifier
- * @returns {number} Number of examples found
- */
 async function validateExamples(tenantId, personaId) {
   const queryParams = {
     TableName: process.env.TABLE_NAME,
@@ -60,8 +49,8 @@ async function validateExamples(tenantId, personaId) {
     Select: 'COUNT'
   };
 
-  const result = await ddb.send(new QueryCommand(queryParams));
-  const exampleCount = result.Count || 0;
+  const exampleCountResponse = await ddb.send(new QueryCommand(queryParams));
+  const exampleCount = exampleCountResponse.Count || 0;
 
   if (exampleCount < 5) {
     const error = new Error(`Insufficient writing examples. Found ${exampleCount}, minimum 5 required for style analysis.`);
@@ -97,11 +86,11 @@ async function triggerStyleAnalysis(tenantId, personaId) {
     ]
   };
 
-  const result = await eventBridge.send(new PutEventsCommand(eventParams));
+  const eventResponse = await eventBridge.send(new PutEventsCommand(eventParams));
 
   return {
     requestId,
-    eventId: result.Entries[0].EventId,
+    eventId: eventResponse.Entries[0].EventId,
     triggeredAt
   };
 }
@@ -120,16 +109,13 @@ export const handler = async (event) => {
       return formatResponse(401, { message: 'Unauthorized' });
     }
 
-    // Validate request
     const validatedInput = triggerAnalysisSchema.parse({
       personaId,
       tenantId
     });
 
-    // Validate persona exists and is active
     await validatePersona(validatedInput.tenantId, validatedInput.personaId);
 
-    // Validate sufficient examples exist
     const exampleCount = await validateExamples(validatedInput.tenantId, validatedInput.personaId);
 
     // Trigger async style analysis
@@ -143,7 +129,13 @@ export const handler = async (event) => {
     });
 
   } catch (error) {
-    console.error('Style analysis trigger error:', error);
+    personaLogger.error('Style analysis trigger operation failed', {
+      operation: 'startStyleAnalysis',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error instanceof z.ZodError) {
       if (error.errors.some(e => e.path.includes('personaId'))) {

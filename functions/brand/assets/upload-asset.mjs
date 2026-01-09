@@ -1,12 +1,12 @@
 import { DynamoDBClient, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { marshall } from '@aws-sdk/util-dynamodb';
 import { CreateBrandAssetRequestSchema, validateRequestBody, generateAssetId } from '../../../models/brand.mjs';
 import { formatResponse } from '../../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
 
 const ddb = new DynamoDBClient();
-const s3 = new S3Client();
+const s3Client = new S3Client();
 
 export const handler = async (event) => {
   const operation = 'upload-asset';
@@ -23,7 +23,6 @@ export const handler = async (event) => {
       throw new BrandError('Missing brandId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
     }
 
-    // Verify brand exists and belongs to tenant
     const brandResponse = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
@@ -38,7 +37,6 @@ export const handler = async (event) => {
 
     const requestData = validateRequestBody(CreateBrandAssetRequestSchema, event.body);
 
-    // Handle file upload data (base64 encoded in body)
     const { fileData, ...assetMetadata } = requestData;
 
     if (!fileData) {
@@ -54,7 +52,7 @@ export const handler = async (event) => {
     const fileBuffer = Buffer.from(fileData, 'base64');
 
     try {
-      await s3.send(new PutObjectCommand({
+      await s3Client.send(new PutObjectCommand({
         Bucket: s3Bucket,
         Key: s3Key,
         Body: fileBuffer,

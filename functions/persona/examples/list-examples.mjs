@@ -1,6 +1,7 @@
 import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { formatResponse } from '../../../utils/api-response.mjs';
+import { personaLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -42,7 +43,6 @@ export const handler = async (event) => {
 
     const examples = response.Items?.map(item => {
       const example = unmarshall(item);
-      // Remove DynamoDB keys from response
       delete example.pk;
       delete example.sk;
       delete example.GSI1PK;
@@ -61,15 +61,21 @@ export const handler = async (event) => {
       };
     }) || [];
 
-    const result = { examples };
+    const exampleListResponse = { examples };
 
     if (response.LastEvaluatedKey) {
-      result.nextToken = Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64');
+      exampleListResponse.nextToken = Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64');
     }
 
-    return formatResponse(200, result);
+    return formatResponse(200, exampleListResponse);
   } catch (error) {
-    console.error('List examples error:', error);
+    personaLogger.error('List examples failed', {
+      operation: 'list-examples',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

@@ -1,5 +1,6 @@
 import { Campaign } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -37,7 +38,13 @@ export const handler = async (event) => {
     return formatResponse(204, null);
 
   } catch (err) {
-    console.error('Delete campaign error:', err);
+    campaignLogger.error('Delete campaign operation failed', {
+      operation: 'delete-campaign',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      errorName: err.name,
+      errorMessage: err.message
+    });
 
     if (err.name === 'ConditionalCheckFailedException') {
       return formatResponse(404, { message: 'Campaign not found' });

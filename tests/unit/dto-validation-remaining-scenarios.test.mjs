@@ -498,7 +498,7 @@ describe('DTO Validation Remaining Scenarios', () => {
           async (testData) => {
             // Create invalid entity data that will fail validation
             const invalidEntity = {
-              id: testData.entityId,
+              id: testData.entityId
               // Missing required fields to trigger validation errors
             };
 

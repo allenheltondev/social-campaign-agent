@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { ulid } from 'ulid';
 import { Brand } from './brand.mjs';
 import { Persona } from './persona.mjs';
+import { Asset, ExternalAssetSchema } from './asset.mjs';
+import { campaignLogger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -11,7 +13,6 @@ const ObjectiveSchema = z.enum(['awareness', 'education', 'conversion', 'event',
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
 const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review', 'approved', 'rejected', 'approval_timeout', 'needs_revision']);
 const DayOfWeekSchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
-
 
 const CTASchema = z.object({
   type: z.string().min(1),
@@ -77,6 +78,17 @@ const AssetOverridesSchema = z.object({
   }).nullable()
 }).nullable();
 
+const InternalAssetReferenceSchema = z.object({
+  assetId: z.string(),
+  type: z.literal('internal'),
+  addedAt: z.string()
+});
+
+const CampaignAssetSchema = z.union([
+  InternalAssetReferenceSchema,
+  ExternalAssetSchema
+]);
+
 const ErrorTrackingSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -109,6 +121,7 @@ export const CampaignSchema = z.object({
   cadenceOverrides: CadenceOverridesSchema,
   messaging: MessagingSchema,
   assetOverrides: AssetOverridesSchema,
+  assets: z.array(CampaignAssetSchema).nullable().optional(),
   status: StatusSchema,
   callbackId: z.string().nullable().optional(),
   planSummary: z.object({
@@ -151,6 +164,7 @@ export const CreateCampaignRequestSchema = z.object({
   cadenceOverrides: CadenceOverridesSchema,
   messaging: MessagingSchema,
   assetOverrides: AssetOverridesSchema,
+  assets: z.array(CampaignAssetSchema).nullable().optional(),
   metadata: z.object({
     source: z.enum(['wizard', 'api', 'import']).default('api'),
     externalRef: z.string().nullable()
@@ -185,6 +199,61 @@ export const generateCampaignId = () => {
 };
 
 export class Campaign {
+  static async validateAssets(tenantId, assets) {
+    if (!assets || assets.length === 0) {
+      return { valid: true, validatedAssets: [] };
+    }
+
+    const validatedAssets = [];
+    const errors = [];
+
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
+
+      try {
+        if (asset.type === 'internal') {
+          const existingAsset = await Asset.findById(tenantId, asset.assetId);
+          if (!existingAsset) {
+            errors.push(`Internal asset ${asset.assetId} not found`);
+            continue;
+          }
+          if (existingAsset.uploadStatus !== 'completed') {
+            errors.push(`Internal asset ${asset.assetId} upload not completed`);
+            continue;
+          }
+
+          validatedAssets.push({
+            ...asset,
+            addedAt: asset.addedAt || new Date().toISOString()
+          });
+        } else if (asset.type === 'external') {
+          if (!asset.url.startsWith('https://')) {
+            errors.push(`External asset URL must use HTTPS protocol: ${asset.url}`);
+            continue;
+          }
+
+          validatedAssets.push({
+            ...asset,
+            addedAt: asset.addedAt || new Date().toISOString()
+          });
+        } else {
+          errors.push(`Invalid asset type at index ${i}: ${asset.type}`);
+        }
+      } catch (error) {
+        errors.push(`Asset validation failed at index ${i}: ${error.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      const validationError = new Error(`Asset validation errors: ${errors.join(', ')}`);
+      validationError.name = 'ValidationError';
+      validationError.details = { errors: errors.map(error => ({ message: error })) };
+      throw validationError;
+    }
+
+    return { valid: true, validatedAssets };
+  }
+
   static validateEntity(campaign) {
     try {
       return CampaignSchema.parse(campaign);
@@ -208,9 +277,17 @@ export class Campaign {
   static async save(tenantId, campaign) {
     try {
       const now = new Date().toISOString();
+
+      let validatedAssets = [];
+      if (campaign.assets) {
+        const { validatedAssets: assets } = await this.validateAssets(tenantId, campaign.assets);
+        validatedAssets = assets;
+      }
+
       const campaignWithDefaults = {
         ...campaign,
         tenantId,
+        assets: validatedAssets.length > 0 ? validatedAssets : null,
         planSummary: campaign.planSummary || null,
         lastError: campaign.lastError || null,
         completedAt: campaign.completedAt || null,
@@ -229,7 +306,9 @@ export class Campaign {
 
       return this._transformFromDynamoDB(campaignData);
     } catch (error) {
-      console.error('Campaign save failed', {
+      campaignLogger.error('Campaign save failed', {
+        operation: 'save',
+        tenantId,
         campaignId: campaign.id,
         errorName: error.name,
         errorMessage: error.message
@@ -258,7 +337,9 @@ export class Campaign {
       const rawCampaign = unmarshall(response.Item);
       return this._transformFromDynamoDB(rawCampaign);
     } catch (error) {
-      console.error('Campaign retrieval failed', {
+      campaignLogger.error('Campaign retrieval failed', {
+        operation: 'findById',
+        tenantId,
         campaignId,
         errorName: error.name,
         errorMessage: error.message
@@ -376,7 +457,9 @@ export class Campaign {
       const updatedCampaign = await this.findById(tenantId, campaignId);
       return updatedCampaign;
     } catch (error) {
-      console.error('Campaign update failed', {
+      campaignLogger.error('Campaign update failed', {
+        operation: 'update',
+        tenantId,
         campaignId,
         errorName: error.name,
         errorMessage: error.message
@@ -432,7 +515,7 @@ export class Campaign {
         );
       }
 
-      const result = {
+      const campaignListResponse = {
         items: campaigns,
         pagination: {
           limit,
@@ -443,9 +526,10 @@ export class Campaign {
         }
       };
 
-      return result;
+      return campaignListResponse;
     } catch (error) {
-      console.error('Campaign list failed', {
+      campaignLogger.error('Campaign list failed', {
+        operation: 'list',
         tenantId,
         errorName: error.name,
         errorMessage: error.message

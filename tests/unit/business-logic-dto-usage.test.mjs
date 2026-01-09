@@ -127,10 +127,10 @@ describe('Business Logic DTO Usage', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId: fc.string({ minLength: 1, maxLength: 50 }),
-          brandId: fc.string({ minLength: 1, maxLength: 50 }),
-          name: fc.string({ minLength: 1, maxLength: 100 }),
-          description: fc.string({ minLength: 1, maxLength: 500 })
+          tenantId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          brandId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          name: fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0),
+          description: fc.string({ minLength: 1, maxLength: 500 }).filter(s => s.trim().length > 0)
         }),
         async (testData) => {
           const rawDynamoItem = {
@@ -185,10 +185,10 @@ describe('Business Logic DTO Usage', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId: fc.string({ minLength: 1, maxLength: 50 }),
-          personaId: fc.string({ minLength: 1, maxLength: 50 }),
-          name: fc.string({ minLength: 1, maxLength: 100 }),
-          role: fc.string({ minLength: 1, maxLength: 100 })
+          tenantId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          personaId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          name: fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0),
+          role: fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0)
         }),
         async (testData) => {
           const rawDynamoItem = {
@@ -200,6 +200,7 @@ describe('Business Logic DTO Usage', () => {
             tenantId: testData.tenantId,
             name: testData.name,
             role: testData.role,
+            isActive: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };

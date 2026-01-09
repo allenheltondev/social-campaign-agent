@@ -1,6 +1,7 @@
 import { Brand } from '../../models/brand.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
+import { brandLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   const operation = 'get-brand';
@@ -25,7 +26,13 @@ export const handler = async (event) => {
 
     return formatResponse(200, brand);
   } catch (error) {
-    console.error('Get brand failed:', error);
+    brandLogger.error('Get brand operation failed', {
+      operation: 'getBrand',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      brandId: event.pathParameters?.brandId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return createStandardizedError(error, operation, {
       tenantId: event.requestContext?.authorizer?.tenantId,
       brandId: event.pathParameters?.brandId

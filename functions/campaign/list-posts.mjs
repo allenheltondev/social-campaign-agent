@@ -1,5 +1,6 @@
 import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -20,7 +21,6 @@ export const handler = async (event) => {
       result = await SocialPost.findByCampaign(tenantId, campaignId, queryLimit, nextToken, platform);
     }
 
-    // Transform to maintain backward compatibility while using standardized format
     const response = {
       posts: result.items,
       count: result.items.length,
@@ -29,7 +29,13 @@ export const handler = async (event) => {
 
     return formatResponse(200, response);
   } catch (error) {
-    console.error('List posts error:', error);
+    campaignLogger.error('List posts operation failed', {
+      operation: 'list-posts',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

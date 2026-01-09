@@ -3,9 +3,10 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { formatResponse } from '../../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
+import { brandLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
-const s3 = new S3Client();
+const s3Client = new S3Client();
 
 export const handler = async (event) => {
   const operation = 'delete-asset';
@@ -22,7 +23,6 @@ export const handler = async (event) => {
       throw new BrandError('Missing brandId or assetId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
     }
 
-    // Get asset metadata to retrieve S3 information
     const assetResponse = await ddb.send(new GetItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({
@@ -37,17 +37,21 @@ export const handler = async (event) => {
 
     const asset = unmarshall(assetResponse.Item);
 
-    // Delete from S3
     try {
-      await s3.send(new DeleteObjectCommand({
+      await s3Client.send(new DeleteObjectCommand({
         Bucket: asset.s3Bucket,
         Key: asset.s3Key
       }));
     } catch (s3Error) {
-      console.error('S3 cleanup failed but continuing with DynamoDB deletion:', s3Error);
+      brandLogger.error('S3 cleanup failed but continuing with DynamoDB deletion', {
+        operation: 'delete-asset-s3-cleanup',
+        s3Bucket: asset.s3Bucket,
+        s3Key: asset.s3Key,
+        errorName: s3Error.name,
+        errorMessage: s3Error.message
+      });
     }
 
-    // Delete from DynamoDB
     await ddb.send(new DeleteItemCommand({
       TableName: process.env.TABLE_NAME,
       Key: marshall({

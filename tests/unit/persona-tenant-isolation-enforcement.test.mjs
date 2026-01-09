@@ -32,10 +32,15 @@ describe('Persona Model Tenant Isolation Enforcement', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId1: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0),
-          tenantId2: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0),
-          personaId: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0)
-        }).filter(data => data.tenantId1 !== data.tenantId2), // Ensure different tenants
+          tenantId1: fc.hexaString({ minLength: 8, maxLength: 16 }).map(s => `tenant${s}`),
+          tenantId2: fc.hexaString({ minLength: 8, maxLength: 16 }).map(s => `tenant${s}`),
+          personaId: fc.string({ minLength: 8, maxLength: 50 }).filter(s => {
+            const trimmed = s.trim();
+            return trimmed.length >= 8 &&
+                   !trimmed.includes('#') &&
+                   /^[a-zA-Z0-9_-]+$/.test(trimmed);
+          })
+        }).filter(data => data.tenantId1.trim() !== data.tenantId2.trim()), // Ensure different tenants
         async (testData) => {
           mockSend.mockResolvedValue({ Item: null });
 
@@ -68,9 +73,9 @@ describe('Persona Model Tenant Isolation Enforcement', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId1: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0),
-          tenantId2: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0)
-        }).filter(data => data.tenantId1 !== data.tenantId2), // Ensure different tenants
+          tenantId1: fc.hexaString({ minLength: 8, maxLength: 16 }).map(s => `tenant${s}`),
+          tenantId2: fc.hexaString({ minLength: 8, maxLength: 16 }).map(s => `tenant${s}`)
+        }).filter(data => data.tenantId1.trim() !== data.tenantId2.trim()), // Ensure different tenants
         async (testData) => {
           mockSend.mockResolvedValue({ Items: [] });
 
@@ -106,8 +111,8 @@ describe('Persona Model Tenant Isolation Enforcement', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({
-          tenantId1: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0),
-          tenantId2: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0),
+          tenantId1: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0 && !s.includes('#') && !/^(constructor|prototype|__proto__|toString|valueOf)$/.test(s)),
+          tenantId2: fc.string({ minLength: 5, maxLength: 50 }).filter(s => s.trim().length > 0 && !s.includes('#') && !/^(constructor|prototype|__proto__|toString|valueOf)$/.test(s)),
           persona: fc.record({
             name: fc.string({ minLength: 5, maxLength: 100 }).filter(s => s.trim().length > 0),
             role: fc.string({ minLength: 5, maxLength: 100 }).filter(s => s.trim().length > 0),

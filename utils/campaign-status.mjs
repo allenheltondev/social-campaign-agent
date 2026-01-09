@@ -1,4 +1,5 @@
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { utilLogger } from './logger.mjs';
 
 const eventBridge = new EventBridgeClient();
 
@@ -74,7 +75,15 @@ export async function publishStatusTransition(campaignId, tenantId, fromStatus, 
 
     return { success: true };
   } catch (err) {
-    console.error('Failed to publish status transition event:', err);
+    utilLogger.error('Failed to publish status transition event', {
+      operation: 'publishStatusTransition',
+      campaignId,
+      tenantId,
+      fromStatus,
+      toStatus,
+      errorName: err.name,
+      errorMessage: err.message
+    });
     return { success: false, error: err.message };
   }
 }

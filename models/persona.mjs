@@ -2,17 +2,18 @@ import { DynamoDBClient, GetItemCommand, BatchGetItemCommand, PutItemCommand, Qu
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import { personaLogger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
 export const PersonaSchema = z.object({
   personaId: z.string(),
   tenantId: z.string(),
-  name: z.string().min(1).max(100),
-  role: z.string().min(1).max(100),
-  company: z.string().min(1).max(100),
+  name: z.string().trim().min(1).max(100),
+  role: z.string().trim().min(1).max(100),
+  company: z.string().trim().min(1).max(100),
   primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
-  voiceTraits: z.array(z.string()).min(1).max(10),
+  voiceTraits: z.array(z.string().trim()).min(1).max(10),
   writingHabits: z.object({
     paragraphs: z.enum(['short', 'medium', 'long']),
     questions: z.enum(['frequent', 'occasional', 'rare']),
@@ -20,16 +21,16 @@ export const PersonaSchema = z.object({
     structure: z.enum(['prose', 'lists', 'mixed'])
   }),
   opinions: z.object({
-    strongBeliefs: z.array(z.string()).min(1).max(3),
-    avoidsTopics: z.array(z.string()).max(10)
+    strongBeliefs: z.array(z.string().trim()).min(1).max(3),
+    avoidsTopics: z.array(z.string().trim()).max(10)
   }),
   language: z.object({
-    avoid: z.array(z.string()).max(20),
-    prefer: z.array(z.string()).max(20)
+    avoid: z.array(z.string().trim()).max(20),
+    prefer: z.array(z.string().trim()).max(20)
   }),
   ctaStyle: z.object({
     aggressiveness: z.enum(['low', 'medium', 'high']),
-    patterns: z.array(z.string()).max(10)
+    patterns: z.array(z.string().trim()).max(10)
   }),
   inferredStyle: z.object({
     sentenceLengthPattern: z.object({
@@ -44,7 +45,7 @@ export const PersonaSchema = z.object({
     analogyUsage: z.enum(['frequent', 'occasional', 'rare']),
     imageryMetaphorUsage: z.enum(['frequent', 'occasional', 'rare']),
     toneTags: z.array(z.enum(['direct', 'warm', 'candid', 'technical', 'playful', 'skeptical', 'optimistic', 'pragmatic', 'story-driven', 'educational'])).min(1).max(4),
-    overallTone: z.string().optional(),
+    overallTone: z.string().trim().optional(),
     assertiveness: z.enum(['high', 'medium', 'low']),
     hedgingStyle: z.enum(['rare', 'some', 'frequent']),
     hookStyle: z.enum(['question', 'contrarian', 'story', 'data', 'straight-to-point', 'mixed']),
@@ -78,10 +79,10 @@ export const WritingExampleSchema = z.object({
   exampleId: z.string(),
   personaId: z.string(),
   tenantId: z.string(),
-  platform: z.string().min(1).max(50),
-  intent: z.string().min(1).max(100),
-  text: z.string().min(10).max(10000),
-  notes: z.string().max(1000).optional(),
+  platform: z.string().trim().min(1).max(50),
+  intent: z.string().trim().min(1).max(100),
+  text: z.string().trim().min(10).max(10000),
+  notes: z.string().trim().max(1000).optional(),
   analyzedAt: z.string().optional(),
   createdAt: z.string()
 });
@@ -108,9 +109,9 @@ export const CreateWritingExampleRequestSchema = WritingExampleSchema.omit({
 export const QueryPersonasRequestSchema = z.object({
   limit: z.coerce.number().min(1).max(100).optional(),
   nextToken: z.string().optional(),
-  search: z.string().max(200).optional(),
-  company: z.string().max(100).optional(),
-  role: z.string().max(100).optional(),
+  search: z.string().trim().max(200).optional(),
+  company: z.string().trim().max(100).optional(),
+  role: z.string().trim().max(100).optional(),
   primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']).optional()
 });
 
@@ -233,7 +234,9 @@ export class Persona {
 
       return this.transformFromDynamoDB(rawPersona);
     } catch (error) {
-      console.error('Persona retrieval failed', {
+      personaLogger.error('Persona retrieval failed', {
+        operation: 'findById',
+        tenantId,
         personaId,
         errorName: error.name,
         errorMessage: error.message
@@ -267,7 +270,9 @@ export class Persona {
 
       return this.transformFromDynamoDB(validatedPersona);
     } catch (error) {
-      console.error('Persona save failed', {
+      personaLogger.error('Persona save failed', {
+        operation: 'save',
+        tenantId,
         personaId: persona.id,
         errorName: error.name,
         errorMessage: error.message
@@ -310,7 +315,9 @@ export class Persona {
 
       return this.transformFromDynamoDB(validatedPersona);
     } catch (error) {
-      console.error('Persona update failed', {
+      personaLogger.error('Persona update failed', {
+        operation: 'update',
+        tenantId,
         personaId,
         errorName: error.name,
         errorMessage: error.message
@@ -351,7 +358,9 @@ export class Persona {
 
       return true;
     } catch (error) {
-      console.error('Persona delete failed', {
+      personaLogger.error('Persona delete failed', {
+        operation: 'delete',
+        tenantId,
         personaId,
         errorName: error.name,
         errorMessage: error.message
@@ -365,7 +374,7 @@ export class Persona {
 
   static async list(tenantId, options = {}) {
     try {
-      const { limit = 20, nextToken, search, company, role, primaryAudience } = options;
+      const { nextToken, search, company, role, primaryAudience } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -389,7 +398,7 @@ export class Persona {
           ':personaPrefix': 'PERSONA#',
           ':true': true
         }),
-        Limit: limit,
+        Limit: options.limit || 20,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));
 
@@ -427,10 +436,10 @@ export class Persona {
         );
       }
 
-      const result = {
+      const personaListResponse = {
         items: personas,
         pagination: {
-          limit,
+          limit: options.limit || 20,
           hasNextPage: !!response.LastEvaluatedKey,
           nextToken: response.LastEvaluatedKey
             ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
@@ -438,9 +447,10 @@ export class Persona {
         }
       };
 
-      return result;
+      return personaListResponse;
     } catch (error) {
-      console.error('Persona list failed', {
+      personaLogger.error('Persona list failed', {
+        operation: 'list',
         tenantId,
         errorName: error.name,
         errorMessage: error.message
@@ -494,7 +504,6 @@ export class Persona {
   static transformFromDynamoDB(rawPersona) {
     const cleanPersona = { ...rawPersona };
 
-    // Remove all internal DynamoDB fields
     delete cleanPersona.pk;
     delete cleanPersona.sk;
     delete cleanPersona.GSI1PK;
@@ -502,7 +511,6 @@ export class Persona {
     delete cleanPersona.GSI2PK;
     delete cleanPersona.GSI2SK;
 
-    // Remove tenant exposure and use clean "id" property
     delete cleanPersona.tenantId;
     cleanPersona.id = cleanPersona.personaId;
     delete cleanPersona.personaId;
@@ -513,10 +521,8 @@ export class Persona {
   static _transformToDynamoDB(tenantId, persona) {
     const now = new Date().toISOString();
 
-    // Convert DTO back to internal format
     const internalPersona = { ...persona };
 
-    // Handle id/personaId conversion
     if (internalPersona.id) {
       internalPersona.personaId = internalPersona.id;
       delete internalPersona.id;

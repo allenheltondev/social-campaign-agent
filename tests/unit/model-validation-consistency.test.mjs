@@ -22,7 +22,7 @@ describe('Model Validation Consistency', () => {
       { name: 'Persona', model: Persona }
     ];
 
-    models.forEach(({ name, model }) => {
+    models.forEach(({ name: _name, model }) => {
       expect(typeof model.validateEntity).toBe('function');
       expect(typeof model.validateUpdateData).toBe('function');
     });
@@ -34,10 +34,10 @@ describe('Model Validation Consistency', () => {
         fc.constantFrom('Campaign', 'SocialPost', 'Brand', 'Persona'),
         (modelName) => {
           const models = {
-            Campaign: Campaign,
-            SocialPost: SocialPost,
-            Brand: Brand,
-            Persona: Persona
+            Campaign,
+            SocialPost,
+            Brand,
+            Persona
           };
 
           const model = models[modelName];
@@ -66,7 +66,7 @@ describe('Model Validation Consistency', () => {
       { name: 'Persona', model: Persona }
     ];
 
-    for (const { name, model } of models) {
+    for (const { name: _name, model } of models) {
       const invalidEntity = { id: 'test-id' }; // Missing required fields
 
       try {

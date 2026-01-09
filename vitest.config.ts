@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.{ts,mjs}', '**/*.test.mjs'],
+    reporters: ['dot'],
+    silent: true,
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [

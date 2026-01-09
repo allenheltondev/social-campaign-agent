@@ -1,5 +1,6 @@
 import { Persona, CreatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { personaLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -15,7 +16,12 @@ export const handler = async (event) => {
 
     return formatResponse(201, { id: persona.id });
   } catch (error) {
-    console.error('Create persona error:', error);
+    personaLogger.error('Create persona failed', {
+      operation: 'create-persona',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.message.includes('Validation error')) {
       return formatResponse(400, { message: error.message });

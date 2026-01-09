@@ -1,5 +1,6 @@
 import { Persona, QueryPersonasRequestSchema, validateQueryParams } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
+import { personaLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -11,17 +12,21 @@ export const handler = async (event) => {
 
     const queryParams = validateQueryParams(QueryPersonasRequestSchema, event.queryStringParameters || {});
 
-    const result = await Persona.list(tenantId, queryParams);
+    const personaListResponse = await Persona.list(tenantId, queryParams);
 
-    // Transform to maintain backward compatibility while using standardized format
     const response = {
-      personas: result.items,
-      ...result.pagination
+      personas: personaListResponse.items,
+      ...personaListResponse.pagination
     };
 
     return formatResponse(200, response);
   } catch (error) {
-    console.error('List personas error:', error);
+    personaLogger.error('List personas operation failed', {
+      operation: 'listPersonas',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.message.includes('validation error') || error.message.includes('Invalid nextToken')) {
       return formatResponse(400, { message: error.message });

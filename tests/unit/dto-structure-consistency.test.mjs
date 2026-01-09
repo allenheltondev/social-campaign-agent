@@ -186,7 +186,7 @@ describe('DTO Structure Consistency Across Entities', () => {
                 GSI2PK: `${testData.tenantId}#persona1`,
                 GSI2SK: `POST#${campaignId}#${now}`,
                 postId: testData.entityId,
-                campaignId: campaignId,
+                campaignId,
                 tenantId: testData.tenantId,
                 personaId: 'persona1',
                 platform: 'twitter',

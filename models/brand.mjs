@@ -1,30 +1,31 @@
-import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import { brandLogger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
 export const BrandSchema = z.object({
   brandId: z.string(),
   tenantId: z.string(),
-  name: z.string().min(1).max(100),
-  ethos: z.string().min(1).max(1000),
-  coreValues: z.array(z.string().min(1).max(200)).min(1).max(10),
+  name: z.string().trim().min(1).max(100),
+  ethos: z.string().trim().min(1).max(1000),
+  coreValues: z.array(z.string().trim().min(1).max(200)).min(1).max(10),
   primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
   voiceGuidelines: z.object({
-    tone: z.array(z.string().min(1).max(50)).min(1).max(10),
-    style: z.array(z.string().min(1).max(50)).min(1).max(10),
-    messaging: z.array(z.string().min(1).max(100)).min(1).max(10)
+    tone: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    style: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    messaging: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
   }),
   visualIdentity: z.object({
-    colorPalette: z.array(z.string().min(1).max(50)).min(1).max(10),
-    typography: z.array(z.string().min(1).max(100)).min(1).max(5),
-    imagery: z.array(z.string().min(1).max(100)).min(1).max(10)
+    colorPalette: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    typography: z.array(z.string().trim().min(1).max(100)).min(1).max(5),
+    imagery: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
   }),
   contentStandards: z.object({
-    qualityRequirements: z.array(z.string().min(1).max(100)).min(1).max(10),
-    restrictions: z.array(z.string().min(1).max(200)).max(20)
+    qualityRequirements: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
+    restrictions: z.array(z.string().trim().min(1).max(200)).max(20)
   }),
   platformGuidelines: z.object({
     enabled: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook'])).min(1),
@@ -40,11 +41,11 @@ export const BrandSchema = z.object({
     )
   }).optional(),
   audienceProfile: z.object({
-    segments: z.array(z.string().min(1).max(100)).max(10).nullable().optional(),
-    excluded: z.array(z.string().min(1).max(100)).max(10).nullable().optional()
+    segments: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional(),
+    excluded: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional()
   }).optional(),
   pillars: z.array(z.object({
-    name: z.string().min(1).max(100),
+    name: z.string().trim().min(1).max(100),
     weight: z.number().min(0).max(1).optional()
   })).max(10).nullable().optional(),
   claimsPolicy: z.object({
@@ -54,8 +55,8 @@ export const BrandSchema = z.object({
     competitorMentionPolicy: z.enum(['avoid', 'neutral_only', 'allowed'])
   }).optional(),
   ctaLibrary: z.array(z.object({
-    type: z.string().min(1).max(50),
-    text: z.string().min(1).max(200),
+    type: z.string().trim().min(1).max(50),
+    text: z.string().trim().min(1).max(200),
     defaultUrl: z.url().nullable().optional()
   })).max(20).nullable().optional(),
   approvalPolicy: z.object({
@@ -71,23 +72,23 @@ export const BrandAssetSchema = z.object({
   assetId: z.string(),
   brandId: z.string(),
   tenantId: z.string(),
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(200),
   type: z.enum(['logo', 'template', 'image', 'document']),
-  category: z.string().min(1).max(100),
-  tags: z.array(z.string().min(1).max(50)).max(20),
-  s3Bucket: z.string().min(1).max(100),
-  s3Key: z.string().min(1).max(500),
-  contentType: z.string().min(1).max(100),
+  category: z.string().trim().min(1).max(100),
+  tags: z.array(z.string().trim().min(1).max(50)).max(20),
+  s3Bucket: z.string().trim().min(1).max(100),
+  s3Key: z.string().trim().min(1).max(500),
+  contentType: z.string().trim().min(1).max(100),
   fileSize: z.number().int().min(1),
   usageRules: z.object({
-    placement: z.string().max(500).optional(),
+    placement: z.string().trim().max(500).optional(),
     sizing: z.object({
       minWidth: z.number().int().min(1).optional(),
       maxWidth: z.number().int().min(1).optional(),
       minHeight: z.number().int().min(1).optional(),
       maxHeight: z.number().int().min(1).optional()
     }).optional(),
-    restrictions: z.array(z.string().max(200)).max(10)
+    restrictions: z.array(z.string().trim().max(200)).max(10)
   }),
   createdAt: z.string(),
   updatedAt: z.string()
@@ -120,16 +121,16 @@ export const CreateBrandAssetRequestSchema = BrandAssetSchema.omit({
   createdAt: true,
   updatedAt: true
 }).extend({
-  fileData: z.string().min(1, 'File data is required')
+  fileData: z.string().trim().min(1, 'File data is required')
 });
 
 export const QueryBrandsRequestSchema = z.object({
   limit: z.coerce.number().min(1).max(100).optional(),
   nextToken: z.string().optional(),
-  search: z.string().max(200).optional(),
+  search: z.string().trim().max(200).optional(),
   status: z.enum(['active', 'inactive', 'archived']).optional(),
-  industry: z.string().max(100).optional(),
-  companySize: z.string().max(50).optional()
+  industry: z.string().trim().max(100).optional(),
+  companySize: z.string().trim().max(50).optional()
 });
 
 export const validateRequestBody = (schema, body) => {
@@ -255,7 +256,9 @@ export class Brand {
 
       return this._transformFromDynamoDB(rawBrand);
     } catch (error) {
-      console.error('Brand retrieval failed', {
+      brandLogger.error('Brand retrieval failed', {
+        operation: 'findById',
+        tenantId,
         brandId,
         errorName: error.name,
         errorMessage: error.message
@@ -291,7 +294,9 @@ export class Brand {
 
       return this._transformFromDynamoDB(dynamoItem);
     } catch (error) {
-      console.error('Brand save failed', {
+      brandLogger.error('Brand save failed', {
+        operation: 'save',
+        tenantId,
         brandId: brand.id,
         errorName: error.name,
         errorMessage: error.message
@@ -345,7 +350,9 @@ export class Brand {
 
       return this._transformFromDynamoDB(unmarshall(response.Attributes));
     } catch (error) {
-      console.error('Brand update failed', {
+      brandLogger.error('Brand update failed', {
+        operation: 'update',
+        tenantId,
         brandId,
         errorName: error.name,
         errorMessage: error.message
@@ -362,7 +369,7 @@ export class Brand {
       const now = new Date().toISOString();
       const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
 
-      const response = await ddb.send(new UpdateItemCommand({
+      await ddb.send(new UpdateItemCommand({
         TableName: process.env.TABLE_NAME,
         Key: marshall({
           pk: `${tenantId}#${brandId}`,
@@ -384,7 +391,9 @@ export class Brand {
 
       return { success: true };
     } catch (error) {
-      console.error('Brand delete failed', {
+      brandLogger.error('Brand delete failed', {
+        operation: 'delete',
+        tenantId,
         brandId,
         errorName: error.name,
         errorMessage: error.message
@@ -540,7 +549,7 @@ export class Brand {
   static async list(tenantId, options = {}) {
     try {
       const { QueryCommand } = await import('@aws-sdk/client-dynamodb');
-      const { limit = 20, nextToken, search, status } = options;
+      const { nextToken, search, status, limit = 50 } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -583,7 +592,7 @@ export class Brand {
         );
       }
 
-      const result = {
+      const brandListResult = {
         items: brands,
         pagination: {
           limit,
@@ -594,9 +603,10 @@ export class Brand {
         }
       };
 
-      return result;
+      return brandListResult;
     } catch (error) {
-      console.error('Brand list failed', {
+      brandLogger.error('Brand list failed', {
+        operation: 'list',
         tenantId,
         errorName: error.name,
         errorMessage: error.message

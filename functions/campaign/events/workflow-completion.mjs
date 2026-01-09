@@ -6,18 +6,23 @@ import {
   createErrorTracking,
   CAMPAIGN_STATUSES
 } from '../../../utils/campaign-status.mjs';
+import { campaignLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
   try {
-    console.log('Processing workflow completion event:', JSON.stringify(event, null, 2));
-
-    const detail = event.detail;
+    const {detail} = event;
     const { campaignId, tenantId, workflowType, success, error, postResults } = detail;
 
     if (!campaignId || !tenantId) {
-      console.error('Missing required parameters in event detail');
+      campaignLogger.error('Missing required parameters in event detail', {
+        operation: 'workflow-completion',
+        campaignId,
+        tenantId,
+        errorName: 'ValidationError',
+        errorMessage: 'Missing required parameters'
+      });
       return { statusCode: 400, body: JSON.stringify({ message: 'Missing required parameters' }) };
     }
 
@@ -30,7 +35,13 @@ export const handler = async (event) => {
     }));
 
     if (!getResponse.Item) {
-      console.error('Campaign not found:', { campaignId, tenantId });
+      campaignLogger.error('Campaign not found for workflow completion', {
+        operation: 'workflow-completion',
+        campaignId,
+        tenantId,
+        errorName: 'NotFoundError',
+        errorMessage: 'Campaign not found'
+      });
       return { statusCode: 404, body: JSON.stringify({ message: 'Campaign not found' }) };
     }
 
@@ -38,7 +49,6 @@ export const handler = async (event) => {
     const currentStatus = campaign.status;
 
     if (currentStatus !== CAMPAIGN_STATUSES.GENERATING) {
-      console.log('Campaign not in generating status, skipping update:', { campaignId, currentStatus });
       return { statusCode: 200, body: JSON.stringify({ message: 'Campaign not in generating status' }) };
     }
 
@@ -71,7 +81,6 @@ export const handler = async (event) => {
     }
 
     if (!targetStatus || targetStatus === currentStatus) {
-      console.log('No status change required:', { currentStatus, targetStatus });
       return { statusCode: 200, body: JSON.stringify({ message: 'No status change required' }) };
     }
 
@@ -115,12 +124,11 @@ export const handler = async (event) => {
       Key: marshall({ pk, sk }),
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: marshall(expressionAttributeValues),
-      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk) AND version = :currentVersion',
       ExpressionAttributeValues: {
         ...marshall(expressionAttributeValues),
         ':currentVersion': { N: campaign.version.toString() }
-      }
+      },
+      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk) AND version = :currentVersion'
     }));
 
     await publishStatusTransition(
@@ -131,12 +139,6 @@ export const handler = async (event) => {
       `Workflow completion: ${workflowType}`,
       error
     );
-
-    console.log('Campaign status updated successfully:', {
-      campaignId,
-      fromStatus: currentStatus,
-      toStatus: targetStatus
-    });
 
     return {
       statusCode: 200,
@@ -149,7 +151,13 @@ export const handler = async (event) => {
     };
 
   } catch (err) {
-    console.error('Workflow completion handler error:', err);
+    campaignLogger.error('Workflow completion handler failed', {
+      operation: 'workflow-completion',
+      campaignId: event.detail?.campaignId,
+      tenantId: event.detail?.tenantId,
+      errorName: err.name,
+      errorMessage: err.message
+    });
 
     if (err.name === 'ConditionalCheckFailedException') {
       return {
@@ -178,7 +186,13 @@ async function getCampaignPosts(tenantId, campaignId) {
 
     return response.Items ? response.Items.map(item => unmarshall(item)) : [];
   } catch (error) {
-    console.error('Error fetching campaign posts:', error);
+    campaignLogger.error('Error fetching campaign posts', {
+      operation: 'get-campaign-posts',
+      tenantId,
+      campaignId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return [];
   }
 }

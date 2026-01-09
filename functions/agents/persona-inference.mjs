@@ -4,6 +4,7 @@ import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { saveStyleAnalysisTool } from './tools.mjs';
+import { agentLogger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const eventBridge = new EventBridgeClient();
@@ -13,13 +14,6 @@ const lambdaEventSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required')
 });
 
-/**
- * Emit EventBridge event for style analysis completion
- * @param {string} tenantId - Tenant identifier
- * @param {string} personaId - Persona identifier
- * @param {string} status - Analysis status (success/failure)
- * @param {Object} details - Additional event details
- */
 async function emitAnalysisEvent(tenantId, personaId, status, details = {}) {
   const eventParams = {
     Entries: [
@@ -42,17 +36,16 @@ async function emitAnalysisEvent(tenantId, personaId, status, details = {}) {
     await eventBridge.send(new PutEventsCommand(eventParams));
 
   } catch (error) {
-    console.error('Failed to emit EventBridge event:', error);
-    // Don't throw - event emission failure shouldn't fail the analysis
+    agentLogger.error('Failed to emit EventBridge event', {
+      operation: 'emitStyleAnalysisEvent',
+      tenantId,
+      personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
   }
 }
 
-/**
- * Load writing examples from DynamoDB for a persona
- * @param {string} tenantId - Tenant identifier
- * @param {string} personaId - Persona identifier
- * @returns {Array} Array of writing examples
- */
 async function loadWritingExamples(tenantId, personaId) {
   const queryParams = {
     TableName: process.env.TABLE_NAME,
@@ -63,19 +56,15 @@ async function loadWritingExamples(tenantId, personaId) {
     })
   };
 
-  const result = await ddb.send(new QueryCommand(queryParams));
+  const queryResponse = await ddb.send(new QueryCommand(queryParams));
 
-  if (!result.Items || result.Items.length === 0) {
+  if (!queryResponse.Items || queryResponse.Items.length === 0) {
     throw new Error('No writing examples found for this persona');
   }
 
-  return result.Items.map(item => unmarshall(item));
+  return queryResponse.Items.map(item => unmarshall(item));
 }
 
-/**
- * Style Inference Agent using Strands SDK
- * Loads examples from DynamoDB and saves analysis back to DynamoDB
- */
 export class StyleInferenceAgent {
   constructor() {
     this.agent = new Agent({
@@ -85,11 +74,6 @@ export class StyleInferenceAgent {
     });
   }
 
-  /**
-   * Analyze writing examples and save results to DynamoDB
-   * @param {Object} input - Input containing personaId and tenantId
-   * @returns {Object} Analysis results
-   */
   async analyzeAndSaveStyle(input) {
     try {
       const validatedInput = lambdaEventSchema.parse(input);
@@ -105,7 +89,6 @@ export class StyleInferenceAgent {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 10);
 
-      // Format examples with full context for the agent prompt
       const formattedExamples = recentExamples
         .map((example, index) => {
           let formatted = `Example ${index + 1}:
@@ -121,7 +104,6 @@ Intent: ${example.intent}`;
         })
         .join('\n\n---\n\n');
 
-      // Create comprehensive prompt for the agent using RISEN framework
       const analysisPrompt = `**ROLE**: Act as a professional writing style analyst and linguistic pattern expert specializing in digital communication analysis and persona voice characterization.
 
 **INSTRUCTIONS**: Analyze the provided writing samples to extract consistent communication patterns, voice traits, and stylistic preferences. You must identify measurable linguistic features and behavioral patterns that define this persona's unique writing style across different platforms and contexts.
@@ -158,9 +140,8 @@ ${formattedExamples}
 
 After completing your analysis, use the save_style_analysis tool to save the results for persona "${personaId}" in tenant "${tenantId}".`;
 
-      const result = await this.agent.invoke(analysisPrompt);
+      const analysisResult = await this.agent.invoke(analysisPrompt);
 
-      // Emit success event
       await emitAnalysisEvent(tenantId, personaId, 'success', {
         examplesAnalyzed: recentExamples.length,
         platforms: [...new Set(recentExamples.map(e => e.platform))],
@@ -174,17 +155,18 @@ After completing your analysis, use the save_style_analysis tool to save the res
         personaId,
         tenantId,
         examplesAnalyzed: recentExamples.length,
-        agentResponse: result.lastMessage
+        agentResponse: analysisResult.lastMessage
       };
 
     } catch (error) {
-      console.error('Style inference error:', {
-        error: error.message,
+      agentLogger.error('Style inference operation failed', {
+        operation: 'styleInference',
+        tenantId: input?.tenantId,
         personaId: input?.personaId,
-        tenantId: input?.tenantId
+        errorName: error.name,
+        errorMessage: error.message
       });
 
-      // Emit failure event
       await emitAnalysisEvent(input?.tenantId, input?.personaId, 'failure', {
         error: error.message,
         requestId: input?.requestId
@@ -200,15 +182,9 @@ After completing your analysis, use the save_style_analysis tool to save the res
   }
 }
 
-/**
- * Lambda handler for style inference using Strands agent
- * Triggered by EventBridge events
- * @param {Object} event - EventBridge event containing analysis request
- * @returns {Object} Style analysis results or error response
- */
 export const handler = async (event) => {
   try {
-    const detail = event.detail;
+    const {detail} = event;
     const { personaId, tenantId, requestId } = detail;
 
     if (!personaId || !tenantId) {
@@ -216,21 +192,26 @@ export const handler = async (event) => {
     }
 
     const agent = new StyleInferenceAgent();
-    const result = await agent.analyzeAndSaveStyle({
+    const styleAnalysisResult = await agent.analyzeAndSaveStyle({
       personaId,
       tenantId,
       requestId
     });
 
     return {
-      statusCode: result.success ? 200 : 400,
-      body: JSON.stringify(result)
+      statusCode: styleAnalysisResult.success ? 200 : 400,
+      body: JSON.stringify(styleAnalysisResult)
     };
 
   } catch (error) {
-    console.error('Handler error:', error);
+    agentLogger.error('Handler operation failed', {
+      operation: 'personaInferenceHandler',
+      tenantId: event.detail?.tenantId,
+      personaId: event.detail?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
-    // Emit failure event for any unhandled errors
     if (event.detail?.tenantId && event.detail?.personaId) {
       await emitAnalysisEvent(
         event.detail.tenantId,
@@ -253,5 +234,4 @@ export const handler = async (event) => {
   }
 };
 
-// Export for use in other modules
 export { lambdaEventSchema };

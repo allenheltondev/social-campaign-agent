@@ -1,5 +1,6 @@
 import { formatResponse } from '../../utils/api-response.mjs';
 import { Campaign } from '../../models/campaign.mjs';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -18,7 +19,13 @@ export const handler = async (event) => {
 
     return formatResponse(200, campaign);
   } catch (error) {
-    console.error('Get campaign error:', error);
+    campaignLogger.error('Get campaign operation failed', {
+      operation: 'get-campaign',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

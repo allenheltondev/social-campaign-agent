@@ -16,17 +16,6 @@ import {
   QueryBrandsRequestSchema
 } from '../models/brand.mjs';
 
-/**
- * Enhanced validation utilities for request/response processing
- */
-
-/**
- * Validate and parse JSON request body
- * @param {string} body - Raw request body
- * @param {z.ZodSchema} schema - Zod schema for validation
- * @returns {Object} Parsed and validated data
- * @throws {Error} Validation error with details
- */
 export const validateRequestBody = (body, schema) => {
   try {
     if (!body) {
@@ -51,13 +40,6 @@ export const validateRequestBody = (body, schema) => {
   }
 };
 
-/**
- * Validate query parameters
- * @param {Object} params - Query parameters object
- * @param {z.ZodSchema} schema - Zod schema for validation
- * @returns {Object} Validated parameters
- * @throws {Error} Validation error with details
- */
 export const validateQueryParams = (params, schema) => {
   try {
     return schema.parse(params || {});
@@ -74,13 +56,6 @@ export const validateQueryParams = (params, schema) => {
   }
 };
 
-/**
- * Validate path parameters
- * @param {Object} pathParams - Path parameters object
- * @param {Array<string>} requiredParams - List of required parameter names
- * @returns {Object} Validated path parameters
- * @throws {Error} If required parameters are missing
- */
 export const validatePathParams = (pathParams, requiredParams) => {
   const missing = requiredParams.filter(param => !pathParams[param]);
   if (missing.length > 0) {
@@ -91,142 +66,72 @@ export const validatePathParams = (pathParams, requiredParams) => {
   return pathParams;
 };
 
-/**
- * Validate tenant context
- * @param {string} tenantId - Tenant identifier from auth context
- * @throws {Error} If tenant ID is missing or invalid
- */
 export const validateTenantContext = (tenantId) => {
   if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
     throw new Error('Invalid or missing tenant context');
   }
 };
 
-/**
- * Validate persona creation request
- * @param {string} body - Request body
- * @returns {Object} Validated persona data
- */
 export const validateCreatePersonaRequest = (body) => {
   return validateRequestBody(body, CreatePersonaRequestSchema);
 };
 
-/**
- * Validate persona update request
- * @param {string} body - Request body
- * @returns {Object} Validated update data
- */
 export const validateUpdatePersonaRequest = (body) => {
-  const data = validateRequestBody(body, UpdatePersonaRequestSchema);
+  const validatedPersonaData = validateRequestBody(body, UpdatePersonaRequestSchema);
 
-  // Ensure at least one field is being updated
-  if (Object.keys(data).length === 0) {
+  if (Object.keys(validatedPersonaData).length === 0) {
     throw new ValidationError('Update request must contain at least one field to update', []);
   }
 
-  return data;
+  return validatedPersonaData;
 };
 
-/**
- * Validate writing example creation request
- * @param {string} body - Request body
- * @returns {Object} Validated example data
- */
 export const validateCreateExampleRequest = (body) => {
   return validateRequestBody(body, CreateWritingExampleRequestSchema);
 };
 
-/**
- * Validate persona query parameters
- * @param {Object} queryParams - Query parameters
- * @returns {Object} Validated query parameters
- */
 export const validatePersonaQuery = (queryParams) => {
   return validateQueryParams(queryParams, QueryPersonasRequestSchema);
 };
 
-/**
- * Validate complete persona entity (for database operations)
- * @param {Object} persona - Persona object
- * @returns {Object} Validated persona
- */
 export const validatePersonaEntity = (persona) => {
   return PersonaSchema.parse(persona);
 };
 
-/**
- * Validate complete writing example entity (for database operations)
- * @param {Object} example - Writing example object
- * @returns {Object} Validated example
- */
 export const validateExampleEntity = (example) => {
   return WritingExampleSchema.parse(example);
 };
 
-/**
- * Validate brand creation request
- * @param {string} body - Request body
- * @returns {Object} Validated brand data
- */
 export const validateCreateBrandRequest = (body) => {
   return validateRequestBody(body, CreateBrandRequestSchema);
 };
 
-/**
- * Validate brand update request
- * @param {string} body - Request body
- * @returns {Object} Validated update data
- */
 export const validateUpdateBrandRequest = (body) => {
-  const data = validateRequestBody(body, UpdateBrandRequestSchema);
+  const validatedBrandData = validateRequestBody(body, UpdateBrandRequestSchema);
 
-  // Ensure at least one field is being updated
-  if (Object.keys(data).length === 0) {
+  if (Object.keys(validatedBrandData).length === 0) {
     throw new ValidationError('Update request must contain at least one field to update', []);
   }
 
-  return data;
+  return validatedBrandData;
 };
 
-/**
- * Validate brand asset creation request
- * @param {string} body - Request body
- * @returns {Object} Validated asset data
- */
 export const validateCreateBrandAssetRequest = (body) => {
   return validateRequestBody(body, CreateBrandAssetRequestSchema);
 };
 
-/**
- * Validate brand query parameters
- * @param {Object} queryParams - Query parameters
- * @returns {Object} Validated query parameters
- */
 export const validateBrandQuery = (queryParams) => {
   return validateQueryParams(queryParams, QueryBrandsRequestSchema);
 };
 
-/**
- * Validate complete brand entity (for database operations)
- * @param {Object} brand - Brand object
- * @returns {Object} Validated brand
- */
 export const validateBrandEntity = (brand) => {
   return BrandSchema.parse(brand);
 };
 
-/**
- * Validate complete brand asset entity (for database operations)
- * @param {Object} asset - Brand asset object
- * @returns {Object} Validated asset
- */
 export const validateBrandAssetEntity = (asset) => {
   return BrandAssetSchema.parse(asset);
 };
 
-/**
- * Custom validation error class for structured error handling
- */
 export class ValidationError extends Error {
   constructor(message, details = []) {
     super(message);
@@ -243,29 +148,18 @@ export class ValidationError extends Error {
   }
 }
 
-/**
- * Sanitize string input to prevent injection attacks
- * @param {string} input - Input string
- * @returns {string} Sanitized string
- */
 export const sanitizeString = (input) => {
   if (typeof input !== 'string') {
     return input;
   }
 
-  // Remove potentially dangerous characters while preserving normal text
   return input
-    .replace(/[<>]/g, '') // Remove angle brackets
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+=/gi, '') // Remove event handlers
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
     .trim();
 };
 
-/**
- * Sanitize object by applying string sanitization to all string values
- * @param {Object} obj - Object to sanitize
- * @returns {Object} Sanitized object
- */
 export const sanitizeObject = (obj) => {
   if (obj === null || typeof obj !== 'object') {
     return obj;

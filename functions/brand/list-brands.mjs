@@ -7,22 +7,22 @@ export const handler = async (event) => {
 
   try {
     const { tenantId } = event.requestContext.authorizer;
-    const { search, limit = 20, nextToken, status } = event.queryStringParameters || {};
+    const { search, nextToken, status } = event.queryStringParameters || {};
 
     if (!tenantId) {
       throw new BrandError('Tenant ID is required', BrandErrorCodes.VALIDATION_ERROR, 400);
     }
 
-    const result = await Brand.list(tenantId, {
+    const brandListResponse = await Brand.list(tenantId, {
       search,
-      limit: parseInt(limit),
+      limit: parseInt(event.queryStringParameters?.limit || '20'),
       nextToken,
       status
     });
 
     const response = {
-      brands: result.items,
-      ...result.pagination
+      brands: brandListResponse.items,
+      ...brandListResponse.pagination
     };
 
     return formatResponse(200, response);

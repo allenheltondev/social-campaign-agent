@@ -1,6 +1,7 @@
 import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { z } from 'zod';
+import { campaignLogger } from '../../utils/logger.mjs';
 
 const approvePostSchema = z.object({
   approved: z.boolean(),
@@ -70,7 +71,14 @@ export const handler = async (event) => {
       });
     }
 
-    console.error('Approve post error:', error);
+    campaignLogger.error('Approve post operation failed', {
+      operation: 'approve-post',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      campaignId: event.pathParameters?.campaignId,
+      postId: event.pathParameters?.postId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

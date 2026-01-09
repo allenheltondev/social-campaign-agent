@@ -11,7 +11,8 @@ export const handler = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
     const { brandId } = event.pathParameters;
-    const { limit = 25, nextToken, type, category } = event.queryStringParameters || {};
+    const { nextToken, type, category } = event.queryStringParameters || {};
+    const requestedLimit = parseInt(event.queryStringParameters?.limit) || 25;
 
     if (!tenantId) {
       throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
@@ -28,7 +29,7 @@ export const handler = async (event) => {
       ExpressionAttributeValues: marshall({
         ':gsi1pk': `${tenantId}#${brandId}`
       }),
-      Limit: parseInt(limit),
+      Limit: requestedLimit,
       ScanIndexForward: false // Most recent first
     };
 
@@ -63,16 +64,16 @@ export const handler = async (event) => {
       return asset;
     }) || [];
 
-    const result = {
+    const assetListResponse = {
       assets,
       count: assets.length
     };
 
     if (response.LastEvaluatedKey) {
-      result.nextToken = Buffer.from(JSON.stringify(response.LastEvaluatedKey)).toString('base64');
+      assetListResponse.nextToken = Buffer.from(JSON.stringify(response.LastEvaluatedKey)).toString('base64');
     }
 
-    return formatResponse(200, result);
+    return formatResponse(200, assetListResponse);
   } catch (error) {
     return createStandardizedError(error, operation, {
       tenantId: event.requestContext?.authorizer?.tenantId,

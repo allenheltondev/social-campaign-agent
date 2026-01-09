@@ -1,17 +1,13 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 import { formatResponse } from '../../../utils/api-response.mjs';
+import { personaLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
-/**
- * Handle style analysis completion notifications from EventBridge
- * @param {Object} event - EventBridge event
- * @returns {Object} Processing result
- */
 export const handler = async (event) => {
   try {
-    const detail = event.detail;
+    const {detail} = event;
 
     if (!detail) {
       return formatResponse(400, { message: 'Missing required fields in event detail' });
@@ -20,7 +16,12 @@ export const handler = async (event) => {
     const { tenantId, personaId, requestId, styleData, success } = detail;
 
     if (!tenantId || !personaId || !requestId) {
-      console.error('Missing required fields in event detail:', detail);
+      personaLogger.error('Missing required fields in event detail', {
+        operation: 'style-analysis-complete',
+        detail,
+        errorName: 'ValidationError',
+        errorMessage: 'Missing required fields in event detail'
+      });
       return formatResponse(400, { message: 'Missing required fields in event detail' });
     }
 
@@ -80,7 +81,13 @@ export const handler = async (event) => {
     }
 
   } catch (error) {
-    console.error('Style analysis complete error:', error);
+    personaLogger.error('Style analysis complete failed', {
+      operation: 'style-analysis-complete',
+      personaId: event.detail?.personaId,
+      tenantId: event.detail?.tenantId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
     return formatResponse(500, { message: 'Internal server error' });
   }
 };

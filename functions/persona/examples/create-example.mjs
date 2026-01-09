@@ -3,6 +3,7 @@ import { marshall } from '@aws-sdk/util-dynamodb';
 import { ulid } from 'ulid';
 import { CreateWritingExampleRequestSchema, validateRequestBody } from '../../../models/persona.mjs';
 import { formatResponse } from '../../../utils/api-response.mjs';
+import { personaLogger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -45,7 +46,13 @@ export const handler = async (event) => {
 
     return formatResponse(201, example);
   } catch (error) {
-    console.error('Create example error:', error);
+    personaLogger.error('Create example failed', {
+      operation: 'create-example',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      personaId: event.pathParameters?.personaId,
+      errorName: error.name,
+      errorMessage: error.message
+    });
 
     if (error.message.includes('Validation error')) {
       return formatResponse(400, { message: error.message });

@@ -57,14 +57,16 @@ export const createStandardizedError = (error, operation, context = {}) => {
   let details = {};
 
   if (error instanceof ModelError || error instanceof BrandError) {
-    statusCode = error.statusCode;
-    errorCode = error.code;
-    message = error.message;
-    details = error.details;
+    const { statusCode: errorStatusCode, code, message: errorMessage, details: errorDetails } = error;
+    statusCode = errorStatusCode;
+    errorCode = code;
+    message = errorMessage;
+    details = errorDetails;
   } else if (error.message?.includes('Validation error')) {
+    const { message: errorMessage } = error;
     statusCode = 400;
     errorCode = ErrorCodes.VALIDATION_ERROR;
-    message = error.message;
+    message = errorMessage;
   } else if (error.name === 'ConditionalCheckFailedException') {
     statusCode = 404;
     errorCode = ErrorCodes.NOT_FOUND;
@@ -108,8 +110,9 @@ export const createModelError = (operation, originalError, entityId = null, cont
   let statusCode = 500;
 
   if (originalError.message?.includes('Validation error')) {
+    const { message: errorMessage } = originalError;
     code = ErrorCodes.VALIDATION_ERROR;
-    message = originalError.message;
+    message = errorMessage;
     statusCode = 400;
   } else if (originalError.name === 'ConditionalCheckFailedException') {
     code = ErrorCodes.NOT_FOUND;
@@ -132,5 +135,4 @@ export const createModelError = (operation, originalError, entityId = null, cont
 
   return new ModelError(message, code, statusCode, { errorId, operation, entityId });
 };
-
 
