@@ -474,8 +474,7 @@ export class Brand {
     delete cleanBrand.sk;
     delete cleanBrand.GSI1PK;
     delete cleanBrand.GSI1SK;
-    delete cleanBrand.GSI2PK;
-    delete cleanBrand.GSI2SK;
+
     delete cleanBrand.tenantId;
 
     cleanBrand.id = cleanBrand.brandId;
@@ -491,8 +490,7 @@ export class Brand {
     delete cleanBrand.sk;
     delete cleanBrand.GSI1PK;
     delete cleanBrand.GSI1SK;
-    delete cleanBrand.GSI2PK;
-    delete cleanBrand.GSI2SK;
+
     delete cleanBrand.tenantId;
 
     cleanBrand.id = cleanBrand.brandId;
@@ -510,8 +508,6 @@ export class Brand {
       sk: 'metadata',
       GSI1PK: tenantId,
       GSI1SK: `BRAND#${now}`,
-      GSI2PK: `${tenantId}#${brand.status}`,
-      GSI2SK: `BRAND#${now}`,
       ...brand,
       brandId,
       tenantId

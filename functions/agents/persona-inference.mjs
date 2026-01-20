@@ -26,8 +26,7 @@ async function emitAnalysisEvent(tenantId, personaId, status, details = {}) {
           status,
           timestamp: new Date().toISOString(),
           ...details
-        }),
-        EventBusName: process.env.EVENT_BUS_NAME || 'default'
+        })
       }
     ]
   };

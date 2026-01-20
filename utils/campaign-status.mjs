@@ -60,8 +60,7 @@ export function createStatusTransitionEvent(campaignId, tenantId, fromStatus, to
       reason,
       error,
       timestamp: new Date().toISOString()
-    }),
-    EventBusName: process.env.EVENT_BUS_NAME || 'default'
+    })
   };
 }
 

@@ -508,8 +508,6 @@ export class Persona {
     delete cleanPersona.sk;
     delete cleanPersona.GSI1PK;
     delete cleanPersona.GSI1SK;
-    delete cleanPersona.GSI2PK;
-    delete cleanPersona.GSI2SK;
 
     delete cleanPersona.tenantId;
     cleanPersona.id = cleanPersona.personaId;
@@ -536,8 +534,6 @@ export class Persona {
       sk: 'persona',
       GSI1PK: tenantId,
       GSI1SK: `PERSONA#${now}`,
-      GSI2PK: `${tenantId}#${internalPersona.company}`,
-      GSI2SK: `PERSONA#${internalPersona.role}#${now}`,
       ...internalPersona
     };
   }

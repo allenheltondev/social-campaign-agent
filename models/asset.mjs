@@ -382,8 +382,6 @@ export class Asset {
     delete cleanAsset.sk;
     delete cleanAsset.GSI1PK;
     delete cleanAsset.GSI1SK;
-    delete cleanAsset.GSI2PK;
-    delete cleanAsset.GSI2SK;
     delete cleanAsset.tenantId;
 
     cleanAsset.id = cleanAsset.assetId;
@@ -400,8 +398,6 @@ export class Asset {
       sk: 'asset',
       GSI1PK: tenantId,
       GSI1SK: `ASSET#${asset.contentType}#${now}`,
-      GSI2PK: tenantId,
-      GSI2SK: `ASSET#${now}`,
       ...asset,
       tenantId
     };

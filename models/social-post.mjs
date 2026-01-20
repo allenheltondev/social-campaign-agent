@@ -8,7 +8,22 @@ const ddb = new DynamoDBClient();
 
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
 const IntentSchema = z.enum(['announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder']);
-const PostStatusSchema = z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review']);
+const PostStatusSchema = z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review', 'approved', 'rejected', 'manually_edited']);
+
+const PostApprovalStatusSchema = z.enum(['pending', 'needs_review', 'approved', 'rejected', 'manually_edited']);
+
+const ApprovalMetadataSchema = z.object({
+  status: PostApprovalStatusSchema,
+  reviewedAt: z.string().datetime().nullable(),
+  comments: z.string().nullable()
+}).nullable();
+
+const VersionMetadataSchema = z.object({
+  current: z.number().int().positive(),
+  total: z.number().int().positive(),
+  regenerationCount: z.number().int().min(0),
+  maxRegenerations: z.number().int().positive().default(3)
+}).nullable();
 
 const ErrorTrackingSchema = z.object({
   code: z.string(),
@@ -42,6 +57,8 @@ export const SocialPostSchema = z.object({
     value: z.string()
   })).optional(),
   status: PostStatusSchema,
+  approval: ApprovalMetadataSchema.optional(),
+  versions: VersionMetadataSchema.optional(),
   lastError: ErrorTrackingSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime()
@@ -182,62 +199,6 @@ export class SocialPost {
     }
   }
 
-  static async findByPersona(tenantId, personaId, campaignId = null, limit = 50, nextToken = null) {
-    try {
-      let exclusiveStartKey;
-      if (nextToken) {
-        try {
-          exclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString());
-        } catch (e) {
-          throw new Error('Invalid nextToken');
-        }
-      }
-
-      const queryParams = {
-        TableName: process.env.TABLE_NAME,
-        IndexName: 'GSI2',
-        KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
-        ExpressionAttributeValues: marshall({
-          ':pk': `${tenantId}#${personaId}`,
-          ':sk': campaignId ? `POST#${campaignId}#` : 'POST#'
-        }),
-        Limit: limit,
-        ScanIndexForward: true,
-        ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
-      };
-
-      const response = await ddb.send(new QueryCommand(queryParams));
-
-      const posts = response.Items?.map(item => {
-        const rawPost = unmarshall(item);
-        return this._transformFromDynamoDB(rawPost);
-      }) || [];
-
-      const responseNextToken = response.LastEvaluatedKey
-        ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
-        : null;
-
-      return {
-        items: posts,
-        pagination: {
-          limit,
-          hasNextPage: !!response.LastEvaluatedKey,
-          nextToken: responseNextToken
-        }
-      };
-    } catch (error) {
-      campaignLogger.error('SocialPost findByPersona failed', {
-        operation: 'findByPersona',
-        tenantId,
-        personaId,
-        campaignId,
-        errorName: error.name,
-        errorMessage: error.message
-      });
-      throw new Error('Failed to retrieve social posts');
-    }
-  }
-
   static _transformFromDynamoDB(rawPost) {
     const cleanPost = { ...rawPost };
 
@@ -245,8 +206,6 @@ export class SocialPost {
     delete cleanPost.sk;
     delete cleanPost.GSI1PK;
     delete cleanPost.GSI1SK;
-    delete cleanPost.GSI2PK;
-    delete cleanPost.GSI2SK;
     delete cleanPost.tenantId;
 
     cleanPost.id = cleanPost.postId;
@@ -260,6 +219,12 @@ export class SocialPost {
     }
     if (cleanPost.assetRequirements === null) {
       delete cleanPost.assetRequirements;
+    }
+    if (cleanPost.approval === null || cleanPost.approval === undefined) {
+      delete cleanPost.approval;
+    }
+    if (cleanPost.versions === null || cleanPost.versions === undefined) {
+      delete cleanPost.versions;
     }
 
     return SocialPostSchema.parse(cleanPost);
@@ -283,8 +248,6 @@ export class SocialPost {
       sk: `POST#${postId}`,
       GSI1PK: `${tenantId}#${campaignId}`,
       GSI1SK: `POST#${internalPost.platform}#${internalPost.scheduledAt}`,
-      GSI2PK: `${tenantId}#${internalPost.personaId}`,
-      GSI2SK: `POST#${campaignId}#${internalPost.scheduledAt}`,
       ...internalPost
     };
   }
@@ -448,6 +411,8 @@ export class SocialPost {
             assetRequirements: post.assetRequirements,
             references: post.references,
             status: 'planned',
+            approval: null,
+            versions: null,
             lastError: null,
             createdAt: now,
             updatedAt: now

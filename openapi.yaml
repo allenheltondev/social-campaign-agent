@@ -774,7 +774,16 @@ paths:
           required: false
           schema:
             type: string
-            enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+            enum:
+              [
+                image/jpeg,
+                image/png,
+                image/gif,
+                image/webp,
+                video/mp4,
+                video/mov,
+                video/avi,
+              ]
           description: Filter assets by content type
         - name: createdAfter
           in: query
@@ -1270,14 +1279,226 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
-components:
-  securitySchemes:
-    PersonaAuthorizer:
-      type: apiKey
-      name: Authorization
-      in: header
-      x-amazon-apigateway-authtype: custom
+  /campaigns/{campaignId}/decisions:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+    post:
+      summary: Make campaign decision
+      description: Make an approval decision for an entire campaign (approved, rejected, or needs_revision)
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum: [approved, rejected, needs_revision]
+                  description: The approval decision
+                comments:
+                  type: string
+                  nullable: true
+                  description: Optional comments about the decision
+      responses:
+        200:
+          description: Campaign decision processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaignId:
+                    type: string
+                  decision:
+                    type: string
+                  decidedAt:
+                    type: string
+                    format: date-time
+        202:
+          description: Revision request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaignId:
+                    type: string
+                  decision:
+                    type: string
+                  decidedAt:
+                    type: string
+                    format: date-time
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CampaignDecisionFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
 
+  /campaigns/{campaignId}/posts/{postId}/decisions:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+      - name: postId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the post
+    post:
+      summary: Make post decision
+      description: Make an approval decision for an individual post
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum: [approved, rejected]
+                  description: The approval decision
+                comments:
+                  type: string
+                  nullable: true
+                  description: Optional comments about the decision
+                reason:
+                  type: string
+                  nullable: true
+                  description: Reason for rejection
+      responses:
+        200:
+          description: Post decision processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  postId:
+                    type: string
+                  decision:
+                    type: string
+                  status:
+                    type: string
+                  decidedAt:
+                    type: string
+                    format: date-time
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostDecisionFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+  /campaigns/{campaignId}/posts/decisions:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the campaign
+    post:
+      summary: Bulk post decisions
+      description: Make decisions for multiple posts at once
+      tags:
+        - Campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decisions
+              properties:
+                decisions:
+                  type: array
+                  minItems: 1
+                  maxItems: 25
+                  items:
+                    type: object
+                    required:
+                      - postId
+                      - decision
+                    properties:
+                      postId:
+                        type: string
+                      decision:
+                        type: string
+                        enum: [approved, rejected]
+                      comments:
+                        type: string
+                        nullable: true
+                      reason:
+                        type: string
+                        nullable: true
+      responses:
+        200:
+          description: Bulk decisions processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  successCount:
+                    type: integer
+                  failureCount:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/UnknownError"
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BulkPostDecisionsFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+
+components:
   responses:
     BadRequest:
       description: Unable to process request. Likely due to improperly formatted request or validation errors.
@@ -1578,7 +1799,11 @@ components:
           minItems: 1
           maxItems: 3
           description: Core beliefs and strong opinions
-          example: ["Data-driven decisions lead to better outcomes", "User experience should always come first"]
+          example:
+            [
+              "Data-driven decisions lead to better outcomes",
+              "User experience should always come first",
+            ]
         avoidsTopics:
           type: array
           items:
@@ -1625,7 +1850,8 @@ components:
             type: string
           maxItems: 10
           description: Preferred CTA patterns and phrases
-          example: ["Let's discuss this further", "I'd love to hear your thoughts"]
+          example:
+            ["Let's discuss this further", "I'd love to hear your thoughts"]
 
     InferredStyle:
       type: object
@@ -1977,7 +2203,8 @@ components:
             type: string
           maxItems: 20
           description: Content restrictions and guidelines
-          example: ["no controversial topics", "avoid jargon", "include data sources"]
+          example:
+            ["no controversial topics", "avoid jargon", "include data sources"]
 
     VisualIdentity:
       type: object
@@ -2471,7 +2698,16 @@ components:
           example: "internal"
         contentType:
           type: string
-          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
           description: MIME type of the asset
           example: "image/jpeg"
         description:
@@ -2546,7 +2782,16 @@ components:
       properties:
         contentType:
           type: string
-          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
           description: MIME type of the asset to upload
           example: "image/jpeg"
         description:
@@ -2602,7 +2847,16 @@ components:
           example: "External product image from company website"
         contentType:
           type: string
-          enum: [image/jpeg, image/png, image/gif, image/webp, video/mp4, video/mov, video/avi]
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
           description: MIME type of the external asset
           example: "image/jpeg"
         addedAt:

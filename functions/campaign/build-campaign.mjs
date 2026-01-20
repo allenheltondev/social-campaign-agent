@@ -1,10 +1,13 @@
 import { withDurableExecution } from '@aws/durable-execution-sdk-js';
+import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { z } from 'zod';
 
 import { run as campaignPlannerRun } from '../agents/campaign-planner.mjs';
 import { run as contentGeneratorRun } from '../agents/content-generator.mjs';
 import { Campaign } from '../../models/campaign.mjs';
 import { SocialPost } from '../../models/social-post.mjs';
+
+const eventBridge = new EventBridgeClient();
 
 const inputSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
@@ -176,28 +179,63 @@ export const handler = withDurableExecution(
     const successfulPosts = contentResults.filter(result => result.success);
 
     let finalStatus = 'needs_revision';
-    let approvalResults = null;
+    let approvalDecision = null;
     if (successfulPosts.length) {
-      approvalResults = await context.waitForCallback('Wait for approval', async (callbackId) => {
+      const callbackResult = await context.waitForCallback('Wait for approval', async (callbackId) => {
         await Campaign.update(tenantId, campaign.id, {
-          status: 'awaiting_review',
+          status: 'pending_approval',
           callbackId
         });
+
+        await eventBridge.send(new PutEventsCommand({
+          Entries: [{
+            Source: 'campaign-api',
+            DetailType: 'Notification',
+            Detail: JSON.stringify({
+              notification: {
+                tenantId,
+                type: 'campaign_review_ready',
+                title: 'Campaign Ready for Review',
+                url: `/campaigns/${campaign.id}`,
+                message: `Campaign "${campaign.name}" is ready for review with ${successfulPosts.length} posts`,
+                metadata: {
+                  campaignId: campaign.id,
+                  campaignName: campaign.name,
+                  postCount: successfulPosts.length
+                }
+              }
+            })
+          }]
+        }));
       }, { timeout: { hours: 24 } });
 
-      await context.step('Complete campaign', async () => {
-        switch (approvalResults.toLowerCase()) {
-          case 'approved':
-            finalStatus = 'approved';
-            break;
-          case 'rejected':
-            finalStatus = 'rejected';
-            break;
-          case 'timeout':
-            finalStatus = 'approval_timeout';
-            break;
-          default:
-            finalStatus = 'needs_revision';
+      await context.step('Process approval decision', async () => {
+        if (!callbackResult) {
+          finalStatus = 'approval_timeout';
+          approvalDecision = 'timeout';
+          return;
+        }
+
+        try {
+          const decision = typeof callbackResult === 'string' ? callbackResult : callbackResult;
+          approvalDecision = decision;
+
+          switch (decision.toLowerCase()) {
+            case 'approved':
+              finalStatus = 'approved';
+              break;
+            case 'rejected':
+              finalStatus = 'rejected';
+              break;
+            case 'needs_revision':
+              finalStatus = 'needs_revision';
+              break;
+            default:
+              finalStatus = 'needs_revision';
+          }
+        } catch (err) {
+          finalStatus = 'needs_revision';
+          approvalDecision = 'error';
         }
       });
     }
@@ -212,7 +250,7 @@ export const handler = withDurableExecution(
       campaignId: campaign.id,
       planResults,
       contentResults,
-      approvalDecision: approvalResults
+      approvalDecision
     };
   }
 );

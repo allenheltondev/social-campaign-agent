@@ -12,6 +12,16 @@ const ddb = new DynamoDBClient();
 const ObjectiveSchema = z.enum(['awareness', 'education', 'conversion', 'event', 'launch']);
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
 const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review', 'approved', 'rejected', 'approval_timeout', 'needs_revision']);
+
+const ApprovalStatusSchema = z.enum(['pending', 'awaiting_review', 'approved', 'rejected', 'needs_revision', 'approval_timeout']);
+
+const ApprovalMetadataSchema = z.object({
+  status: ApprovalStatusSchema,
+  submittedAt: z.string().datetime().nullable(),
+  reviewedAt: z.string().datetime().nullable(),
+  approvedPostCount: z.number().int().min(0),
+  totalPostCount: z.number().int().min(0)
+}).nullable();
 const DayOfWeekSchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
 
 const CTASchema = z.object({
@@ -123,6 +133,7 @@ export const CampaignSchema = z.object({
   assetOverrides: AssetOverridesSchema,
   assets: z.array(CampaignAssetSchema).nullable().optional(),
   status: StatusSchema,
+  approval: ApprovalMetadataSchema.optional(),
   callbackId: z.string().nullable().optional(),
   planSummary: z.object({
     totalPosts: z.number().int().min(0),
@@ -288,6 +299,7 @@ export class Campaign {
         ...campaign,
         tenantId,
         assets: validatedAssets.length > 0 ? validatedAssets : null,
+        approval: campaign.approval || null,
         planSummary: campaign.planSummary || null,
         lastError: campaign.lastError || null,
         completedAt: campaign.completedAt || null,
@@ -355,9 +367,11 @@ export class Campaign {
     delete cleanCampaign.sk;
     delete cleanCampaign.GSI1PK;
     delete cleanCampaign.GSI1SK;
-    delete cleanCampaign.GSI2PK;
-    delete cleanCampaign.GSI2SK;
     delete cleanCampaign.tenantId;
+
+    if (cleanCampaign.approval === null || cleanCampaign.approval === undefined) {
+      delete cleanCampaign.approval;
+    }
 
     cleanCampaign.id = cleanCampaign.id || rawCampaign.pk?.split('#')[1];
 
@@ -372,8 +386,6 @@ export class Campaign {
       sk: 'campaign',
       GSI1PK: tenantId,
       GSI1SK: `CAMPAIGN#${now}`,
-      GSI2PK: tenantId,
-      GSI2SK: `CAMPAIGN#${campaign.status}#${now}`,
       ...campaign
     };
   }

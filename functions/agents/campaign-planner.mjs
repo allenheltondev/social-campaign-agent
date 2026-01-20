@@ -232,6 +232,18 @@ export const run = async (tenantId, campaignData) => {
       throw new Error('No posts were created by the campaign planner');
     }
 
+    const now = new Date().toISOString();
+    await Campaign.update(tenantId, campaignId, {
+      status: 'awaiting_review',
+      approval: {
+        status: 'awaiting_review',
+        submittedAt: now,
+        reviewedAt: null,
+        approvedPostCount: 0,
+        totalPostCount: posts.length
+      }
+    });
+
     return { posts, success: true };
   } catch (error) {
     agentLogger.error('Campaign planning failed', {

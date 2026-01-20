@@ -66,10 +66,6 @@ Resources:
           AttributeType: S
         - AttributeName: GSI1SK
           AttributeType: S
-        - AttributeName: GSI2PK
-          AttributeType: S
-        - AttributeName: GSI2SK
-          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -81,14 +77,6 @@ Resources:
             - AttributeName: GSI1PK
               KeyType: HASH
             - AttributeName: GSI1SK
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: GSI2
-          KeySchema:
-            - AttributeName: GSI2PK
-              KeyType: HASH
-            - AttributeName: GSI2SK
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -470,7 +458,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
       Events:
         TriggerAnalysis:
           Type: Api
@@ -515,7 +502,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
           MODEL_ID: us.amazon.nova-pro-v1:0
       Events:
         StyleAnalysisRequest:
@@ -604,7 +590,6 @@ Resources:
               DaysAfterInitiation: 7
       NotificationConfiguration:
         EventBridgeConfiguration:
-        LambdaConfigurations:
           EventBridgeEnabled: true
       CorsConfiguration:
         CorsRules:
@@ -922,7 +907,6 @@ Resources:
                 - dynamodb:Query
               Resource:
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
-                - !Sub "${PersonaTable.Arn}/index/GSI2"
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
@@ -984,6 +968,123 @@ Resources:
             Path: /campaigns/{campaignId}/approve
             Method: POST
 
+  CampaignDecisionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/make-decision.mjs
+    Properties:
+      Handler: campaign/make-decision.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+            - Effect: Allow
+              Action:
+                - lambda:SendDurableExecutionCallbackSuccess
+                - lambda:SendDurableExecutionCallbackFailure
+              Resource: '*'
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        CampaignDecisionApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}/decisions
+            Method: POST
+
+  PostDecisionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/make-post-decision.mjs
+    Properties:
+      Handler: campaign/make-post-decision.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/*"
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        PostDecisionApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}/posts/{postId}/decisions
+            Method: POST
+
+
+  BulkPostDecisionsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - campaign/bulk-post-decisions.mjs
+    Properties:
+      Handler: campaign/bulk-post-decisions.handler
+      Timeout: 30
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PersonaTable.Arn
+                - !Sub "${PersonaTable.Arn}/index/*"
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        BulkPostDecisionsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /campaigns/{campaignId}/posts/decisions
+            Method: POST
+
+
+
   GetCampaignFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -1031,7 +1132,7 @@ Resources:
               Resource:
                 - !GetAtt PersonaTable.Arn
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
-                - !Sub "${PersonaTable.Arn}/index/GSI2"
+
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
@@ -1068,7 +1169,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
       Events:
         UpdateCampaign:
           Type: Api
@@ -1126,7 +1226,7 @@ Resources:
               Resource:
                 - !GetAtt PersonaTable.Arn
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
-                - !Sub "${PersonaTable.Arn}/index/GSI2"
+
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
@@ -1164,7 +1264,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
       Events:
         StatusUpdateRequest:
           Type: EventBridgeRule
@@ -1200,7 +1299,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
-          EVENT_BUS_NAME: default
       Events:
         WorkflowCompletion:
           Type: EventBridgeRule
@@ -1341,7 +1439,7 @@ Resources:
               Resource:
                 - !GetAtt PersonaTable.Arn
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
-                - !Sub "${PersonaTable.Arn}/index/GSI2"
+
             - Effect: Allow
               Action:
                 - s3:DeleteObject
@@ -1452,7 +1550,3 @@ Outputs:
   AssetsBucket:
     Description: S3 bucket for asset storage
     Value: !Ref AssetsBucket
-
-  AssetAccessLogsBucket:
-    Description: S3 bucket for asset access logs
-    Value: !Ref AssetAccessLogsBucket

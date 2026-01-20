@@ -12,18 +12,17 @@ export const handler = async (event) => {
       return formatResponse(401, { message: 'Unauthorized' });
     }
 
-    let result;
     const queryLimit = limit ? parseInt(limit, 10) : 50;
+    const result = await SocialPost.findByCampaign(tenantId, campaignId, queryLimit, nextToken, platform);
 
+    let posts = result.items;
     if (persona) {
-      result = await SocialPost.findByPersona(tenantId, persona, campaignId, queryLimit, nextToken);
-    } else {
-      result = await SocialPost.findByCampaign(tenantId, campaignId, queryLimit, nextToken, platform);
+      posts = posts.filter(post => post.personaId === persona);
     }
 
     const response = {
-      posts: result.items,
-      count: result.items.length,
+      posts,
+      count: posts.length,
       ...result.pagination
     };
 
