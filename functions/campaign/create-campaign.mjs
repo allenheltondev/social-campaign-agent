@@ -94,6 +94,10 @@ export const handler = async (event) => {
       campaign.metadata = { source: 'api' };
     }
 
+    if (requestData.blendSchedule !== undefined) {
+      campaign.blendSchedule = requestData.blendSchedule;
+    }
+
     campaign.assetPool = assetPool;
     campaign.assetPoolStats = assetPoolStats;
 

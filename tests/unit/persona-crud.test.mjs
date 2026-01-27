@@ -59,6 +59,101 @@ describe('Persona CRUD Functions', () => {
       const response = await createPersonaHandler(event);
       expect(response.statusCode).toBe(201);
     });
+
+    it('should create persona with minimal fields and apply defaults', async () => {
+      const minimalPersonaData = {
+        name: 'Jane Smith',
+        role: 'CEO',
+        company: 'StartupCo',
+        primaryAudience: 'executives'
+      };
+
+      ddbMock.on(PutItemCommand).resolves({});
+
+      const event = {
+        requestContext: {
+          authorizer: {
+            tenantId: 'test-tenant'
+          }
+        },
+        body: JSON.stringify(minimalPersonaData)
+      };
+
+      const response = await createPersonaHandler(event);
+      expect(response.statusCode).toBe(201);
+
+      const putCall = ddbMock.commandCalls(PutItemCommand)[0];
+      const savedItem = putCall.args[0].input.Item;
+
+      expect(savedItem.voiceTraits).toBeDefined();
+      expect(savedItem.writingHabits).toBeDefined();
+      expect(savedItem.opinions).toBeDefined();
+      expect(savedItem.language).toBeDefined();
+      expect(savedItem.ctaStyle).toBeDefined();
+    });
+
+    it('should apply correct defaults for professionals audience', async () => {
+      const minimalPersonaData = {
+        name: 'Alex Johnson',
+        role: 'Product Manager',
+        company: 'TechCorp',
+        primaryAudience: 'professionals'
+      };
+
+      ddbMock.on(PutItemCommand).resolves({});
+
+      const event = {
+        requestContext: {
+          authorizer: {
+            tenantId: 'test-tenant'
+          }
+        },
+        body: JSON.stringify(minimalPersonaData)
+      };
+
+      const response = await createPersonaHandler(event);
+      expect(response.statusCode).toBe(201);
+
+      const putCall = ddbMock.commandCalls(PutItemCommand)[0];
+      const savedItem = putCall.args[0].input.Item;
+
+      expect(savedItem.voiceTraits.L).toHaveLength(3);
+      expect(savedItem.writingHabits.M.emojis.S).toBe('sparing');
+      expect(savedItem.ctaStyle.M.aggressiveness.S).toBe('medium');
+    });
+
+    it('should override defaults with user-provided values', async () => {
+      const partialPersonaData = {
+        name: 'Sam Wilson',
+        role: 'Developer',
+        company: 'DevShop',
+        primaryAudience: 'technical',
+        voiceTraits: ['friendly', 'helpful']
+      };
+
+      ddbMock.on(PutItemCommand).resolves({});
+
+      const event = {
+        requestContext: {
+          authorizer: {
+            tenantId: 'test-tenant'
+          }
+        },
+        body: JSON.stringify(partialPersonaData)
+      };
+
+      const response = await createPersonaHandler(event);
+      expect(response.statusCode).toBe(201);
+
+      const putCall = ddbMock.commandCalls(PutItemCommand)[0];
+      const savedItem = putCall.args[0].input.Item;
+
+      expect(savedItem.voiceTraits.L).toHaveLength(2);
+      expect(savedItem.voiceTraits.L[0].S).toBe('friendly');
+      expect(savedItem.voiceTraits.L[1].S).toBe('helpful');
+      expect(savedItem.writingHabits).toBeDefined();
+      expect(savedItem.opinions).toBeDefined();
+    });
   });
 
   describe('Get Persona', () => {

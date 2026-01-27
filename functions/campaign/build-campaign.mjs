@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { run as campaignPlannerRun } from '../agents/campaign-planner.mjs';
 import { run as contentGeneratorRun } from '../agents/content-generator.mjs';
+import { run as scheduleBlenderRun } from '../agents/schedule-blender.mjs';
 import { Campaign } from '../../models/campaign.mjs';
 import { SocialPost } from '../../models/social-post.mjs';
 
@@ -68,7 +69,8 @@ const inputSchema = z.object({
     metadata: z.object({
       source: z.enum(['wizard', 'api', 'import']).default('api'),
       externalRef: z.string().nullable()
-    }).optional()
+    }).optional(),
+    blendSchedule: z.boolean().optional().default(false)
   })
 });
 
@@ -177,6 +179,35 @@ export const handler = withDurableExecution(
     );
     if (!contentResults) contentResults = [];
     const successfulPosts = contentResults.filter(result => result.success);
+
+    if (campaign.blendSchedule) {
+      await context.step('Blend schedules', async () => {
+        try {
+          console.log('Starting schedule blending', {
+            campaignId: campaign.id,
+            tenantId
+          });
+
+          const { schedules } = await scheduleBlenderRun(tenantId, {
+            campaignId: campaign.id
+          });
+
+          await SocialPost.batchUpdateSchedules(tenantId, schedules);
+
+          console.log('Schedule blending completed', {
+            campaignId: campaign.id,
+            tenantId,
+            postsRescheduled: schedules.length
+          });
+        } catch (err) {
+          console.error('Schedule blending failed', {
+            campaignId: campaign.id,
+            tenantId,
+            error: err.message
+          });
+        }
+      });
+    }
 
     let finalStatus = 'needs_revision';
     let approvalDecision = null;

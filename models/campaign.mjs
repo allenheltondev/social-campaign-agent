@@ -209,6 +209,7 @@ export const CreateCampaignRequestSchema = z.object({
   assetOverrides: AssetOverridesSchema.nullable(),
   assets: z.array(CampaignAssetSchema).nullable().optional(),
   previewAssets: z.boolean().optional(),
+  blendSchedule: z.boolean().optional().default(false),
   metadata: z.object({
     source: z.enum(['wizard', 'api', 'import']).default('api'),
     externalRef: z.string().nullable()
@@ -530,17 +531,34 @@ export class Campaign {
         }
       }
 
+      const statusArray = status ? (Array.isArray(status) ? status : [status]) : null;
+      const hasStatusFilter = statusArray && statusArray.length > 0;
+
+      const expressionAttributeValues = {
+        ':tenantId': tenantId,
+        ':campaignPrefix': 'CAMPAIGN#'
+      };
+
+      let filterExpression;
+      let expressionAttributeNames;
+
+      if (hasStatusFilter) {
+        const statusPlaceholders = statusArray.map((_, index) => `:status${index}`).join(', ');
+        filterExpression = `#status IN (${statusPlaceholders})`;
+        expressionAttributeNames = { '#status': 'status' };
+
+        statusArray.forEach((statusValue, index) => {
+          expressionAttributeValues[`:status${index}`] = statusValue;
+        });
+      }
+
       const response = await ddb.send(new QueryCommand({
         TableName: process.env.TABLE_NAME,
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :campaignPrefix)',
-        FilterExpression: status ? '#status = :status' : undefined,
-        ExpressionAttributeNames: status ? { '#status': 'status' } : undefined,
-        ExpressionAttributeValues: marshall({
-          ':tenantId': tenantId,
-          ':campaignPrefix': 'CAMPAIGN#',
-          ...(status && { ':status': status })
-        }),
+        FilterExpression: filterExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: marshall(expressionAttributeValues),
         Limit: limit,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));

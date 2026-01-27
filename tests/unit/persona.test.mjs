@@ -6,6 +6,17 @@ import {
 
 describe('Persona Schemas', () => {
   describe('CreatePersonaRequestSchema', () => {
+    it('should validate a minimal persona creation request with only required fields', () => {
+      const minimalPersona = {
+        name: 'John Doe',
+        role: 'Marketing Manager',
+        company: 'Tech Corp',
+        primaryAudience: 'professionals'
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(minimalPersona)).not.toThrow();
+    });
+
     it('should validate a complete persona creation request', () => {
       const validPersona = {
         name: 'John Doe',
@@ -50,7 +61,7 @@ describe('Persona Schemas', () => {
           structure: 'mixed'
         },
         opinions: {
-          strongBeliefs: ['Belief 1', 'Belief 2', 'Belief 3', 'Belief 4'], // Too many
+          strongBeliefs: ['Belief 1', 'Belief 2', 'Belief 3', 'Belief 4'],
           avoidsTopics: []
         },
         language: {
@@ -61,6 +72,62 @@ describe('Persona Schemas', () => {
           aggressiveness: 'medium',
           patterns: []
         }
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+    });
+
+    it('should validate partial persona with some optional fields', () => {
+      const partialPersona = {
+        name: 'Jane Smith',
+        role: 'Content Strategist',
+        company: 'Media Co',
+        primaryAudience: 'creative',
+        voiceTraits: ['expressive', 'innovative'],
+        opinions: {
+          strongBeliefs: ['Creativity drives innovation'],
+          avoidsTopics: []
+        }
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(partialPersona)).not.toThrow();
+    });
+
+    it('should reject persona missing name', () => {
+      const invalidPersona = {
+        role: 'Marketing Manager',
+        company: 'Tech Corp',
+        primaryAudience: 'professionals'
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+    });
+
+    it('should reject persona missing role', () => {
+      const invalidPersona = {
+        name: 'John Doe',
+        company: 'Tech Corp',
+        primaryAudience: 'professionals'
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+    });
+
+    it('should reject persona missing company', () => {
+      const invalidPersona = {
+        name: 'John Doe',
+        role: 'Marketing Manager',
+        primaryAudience: 'professionals'
+      };
+
+      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+    });
+
+    it('should reject persona missing primaryAudience', () => {
+      const invalidPersona = {
+        name: 'John Doe',
+        role: 'Marketing Manager',
+        company: 'Tech Corp'
       };
 
       expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();

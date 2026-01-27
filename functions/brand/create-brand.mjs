@@ -2,6 +2,7 @@ import { CreateBrandRequestSchema, validateRequestBody, Brand } from '../../mode
 import { formatResponse } from '../../utils/api-response.mjs';
 import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
 import { brandLogger } from '../../utils/logger.mjs';
+import { getBrandDefaults } from '../../utils/brand-defaults.mjs';
 
 export const handler = async (event) => {
   const operation = 'create-brand';
@@ -14,6 +15,8 @@ export const handler = async (event) => {
     }
 
     const requestData = validateRequestBody(CreateBrandRequestSchema, event.body);
+
+    const defaults = getBrandDefaults(requestData.primaryAudience);
 
     if (requestData.assets && requestData.assets.length > 0) {
       const now = new Date().toISOString();
@@ -35,12 +38,16 @@ export const handler = async (event) => {
     const defaultConfig = Brand.getDefaultBrandConfiguration();
 
     const brand = {
+      ...defaults,
       ...requestData,
-      platformGuidelines: requestData.platformGuidelines || defaultConfig.platformGuidelines,
+      voiceGuidelines: requestData.voiceGuidelines || defaults.voiceGuidelines,
+      contentStandards: requestData.contentStandards || defaults.contentStandards,
+      visualIdentity: requestData.visualIdentity || defaults.visualIdentity,
+      platformGuidelines: requestData.platformGuidelines || defaults.platformGuidelines,
       audienceProfile: requestData.audienceProfile || defaultConfig.audienceProfile,
-      claimsPolicy: requestData.claimsPolicy || defaultConfig.claimsPolicy,
+      claimsPolicy: requestData.claimsPolicy || defaults.claimsPolicy,
       ctaLibrary: requestData.ctaLibrary || defaultConfig.ctaLibrary,
-      approvalPolicy: requestData.approvalPolicy || defaultConfig.approvalPolicy
+      approvalPolicy: requestData.approvalPolicy || defaults.approvalPolicy
     };
 
     const savedBrand = await Brand.save(tenantId, brand);

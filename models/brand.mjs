@@ -15,11 +15,11 @@ const UsageIntentSchema = z.object({
 const InternalAssetAssociationSchema = z.object({
   type: z.literal('internal'),
   assetId: z.string(),
-  usageIntent: UsageIntentSchema,
-  isDefault: z.boolean().default(false),
+  usageIntent: UsageIntentSchema.optional(),
+  isDefault: z.boolean().optional().default(false),
   categories: z.array(z.string().trim().min(1).max(100)).max(10).optional().nullable(),
-  addedAt: z.string(),
-  addedBy: z.string()
+  addedAt: z.string().optional(),
+  addedBy: z.string().optional()
 });
 
 const ExternalAssetAssociationSchema = z.object({
@@ -29,11 +29,11 @@ const ExternalAssetAssociationSchema = z.object({
   }),
   description: z.string().trim().min(10).max(500),
   contentType: z.string().trim().min(1).max(100),
-  usageIntent: UsageIntentSchema,
-  isDefault: z.boolean().default(false),
+  usageIntent: UsageIntentSchema.optional(),
+  isDefault: z.boolean().optional().default(false),
   categories: z.array(z.string().trim().min(1).max(100)).max(10).optional().nullable(),
-  addedAt: z.string(),
-  addedBy: z.string()
+  addedAt: z.string().optional(),
+  addedBy: z.string().optional()
 });
 
 const BrandAssetAssociationSchema = z.discriminatedUnion('type', [
@@ -147,21 +147,62 @@ export {
   AssetLibraryStatsSchema
 };
 
-export const CreateBrandRequestSchema = BrandSchema.omit({
-  brandId: true,
-  tenantId: true,
-  createdAt: true,
-  updatedAt: true,
-  status: true,
-  assetLibraryStats: true
-}).partial({
-  platformGuidelines: true,
-  audienceProfile: true,
-  pillars: true,
-  claimsPolicy: true,
-  ctaLibrary: true,
-  approvalPolicy: true,
-  assets: true
+export const CreateBrandRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  ethos: z.string().trim().min(1).max(1000),
+  coreValues: z.array(z.string().trim().min(1).max(200)).min(1).max(10),
+  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
+  voiceGuidelines: z.object({
+    tone: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    style: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    messaging: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
+  }).optional(),
+  visualIdentity: z.object({
+    colorPalette: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
+    typography: z.array(z.string().trim().min(1).max(100)).min(1).max(5),
+    imagery: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
+  }).optional(),
+  contentStandards: z.object({
+    qualityRequirements: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
+    restrictions: z.array(z.string().trim().min(1).max(200)).max(20)
+  }).optional(),
+  platformGuidelines: z.object({
+    enabled: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook'])).min(1),
+    defaults: z.record(
+      z.enum(['twitter', 'linkedin', 'instagram', 'facebook']),
+      z.object({
+        defaultAsset: z.enum(['none', 'image', 'video']),
+        linkPolicy: z.enum(['allowed', 'discouraged', 'never']),
+        emojiPolicy: z.enum(['none', 'sparing', 'allowed']),
+        hashtagPolicy: z.enum(['none', 'sparing', 'allowed']),
+        typicalCadencePerWeek: z.number().min(0).max(21)
+      })
+    )
+  }).optional(),
+  audienceProfile: z.object({
+    segments: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional(),
+    excluded: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional()
+  }).optional(),
+  pillars: z.array(z.object({
+    name: z.string().trim().min(1).max(100),
+    weight: z.number().min(0).max(1).optional()
+  })).max(10).nullable().optional(),
+  claimsPolicy: z.object({
+    noGuarantees: z.boolean(),
+    noPerformanceNumbersUnlessProvided: z.boolean(),
+    requireSourceForStats: z.boolean(),
+    competitorMentionPolicy: z.enum(['avoid', 'neutral_only', 'allowed'])
+  }).optional(),
+  ctaLibrary: z.array(z.object({
+    type: z.string().trim().min(1).max(50),
+    text: z.string().trim().min(1).max(200),
+    defaultUrl: z.url().nullable().optional()
+  })).max(20).nullable().optional(),
+  approvalPolicy: z.object({
+    threshold: z.number().min(0).max(1),
+    mode: z.enum(['auto_approve', 'require_review_below_threshold', 'always_review'])
+  }).optional(),
+  assets: z.array(BrandAssetAssociationSchema).max(50).optional().nullable()
 });
 
 export const UpdateBrandRequestSchema = CreateBrandRequestSchema.partial();

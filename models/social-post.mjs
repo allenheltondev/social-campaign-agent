@@ -422,6 +422,82 @@ export class SocialPost {
     }
   }
 
+  static async batchUpdateSchedules(tenantId, schedules) {
+    campaignLogger.info('Starting batch schedule update', {
+      operation: 'batchUpdateSchedules',
+      tenantId,
+      totalSchedules: schedules.length
+    });
+
+    const batchSize = 25;
+    let updatedCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (let i = 0; i < schedules.length; i += batchSize) {
+      const batch = schedules.slice(i, i + batchSize);
+
+      const results = await Promise.allSettled(
+        batch.map(({ postId, campaignId, newScheduledAt }) =>
+          this.update(tenantId, campaignId, postId, {
+            scheduledAt: newScheduledAt
+          }).then(() => ({ postId, campaignId, success: true }))
+            .catch(error => ({ postId, campaignId, success: false, error }))
+        )
+      );
+
+      results.forEach(result => {
+        if (result.status === 'fulfilled') {
+          const { success, postId, campaignId, error } = result.value;
+          if (success) {
+            updatedCount++;
+          } else {
+            failedCount++;
+            errors.push({
+              postId,
+              campaignId,
+              message: error.message
+            });
+            campaignLogger.error('Failed to update post schedule', {
+              operation: 'batchUpdateSchedules',
+              tenantId,
+              postId,
+              campaignId,
+              errorMessage: error.message
+            });
+          }
+        } else {
+          failedCount++;
+          errors.push({
+            postId: 'unknown',
+            campaignId: 'unknown',
+            message: result.reason?.message || 'Unknown error'
+          });
+          campaignLogger.error('Failed to update post schedule', {
+            operation: 'batchUpdateSchedules',
+            tenantId,
+            errorMessage: result.reason?.message || 'Unknown error'
+          });
+        }
+      });
+    }
+
+    campaignLogger.info('Completed batch schedule update', {
+      operation: 'batchUpdateSchedules',
+      tenantId,
+      totalSchedules: schedules.length,
+      updated: updatedCount,
+      failed: failedCount
+    });
+
+    return {
+      success: failedCount === 0,
+      updated: updatedCount,
+      failed: failedCount,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  }
+
   static async createSocialPosts(campaignId, tenantId, posts) {
     const createdPosts = [];
     const now = new Date().toISOString();

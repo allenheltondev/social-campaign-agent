@@ -87,13 +87,30 @@ export const WritingExampleSchema = z.object({
   createdAt: z.string()
 });
 
-export const CreatePersonaRequestSchema = PersonaSchema.omit({
-  personaId: true,
-  tenantId: true,
-  inferredStyle: true,
-  createdAt: true,
-  updatedAt: true,
-  isActive: true
+export const CreatePersonaRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  role: z.string().trim().min(1).max(100),
+  company: z.string().trim().min(1).max(100),
+  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
+  voiceTraits: z.array(z.string().trim()).min(1).max(10).optional(),
+  writingHabits: z.object({
+    paragraphs: z.enum(['short', 'medium', 'long']),
+    questions: z.enum(['frequent', 'occasional', 'rare']),
+    emojis: z.enum(['frequent', 'sparing', 'none']),
+    structure: z.enum(['prose', 'lists', 'mixed'])
+  }).optional(),
+  opinions: z.object({
+    strongBeliefs: z.array(z.string().trim()).min(1).max(3),
+    avoidsTopics: z.array(z.string().trim()).max(10)
+  }).optional(),
+  language: z.object({
+    avoid: z.array(z.string().trim()).max(20),
+    prefer: z.array(z.string().trim()).max(20)
+  }).optional(),
+  ctaStyle: z.object({
+    aggressiveness: z.enum(['low', 'medium', 'high']),
+    patterns: z.array(z.string().trim()).max(10)
+  }).optional()
 });
 
 export const UpdatePersonaRequestSchema = CreatePersonaRequestSchema.partial();

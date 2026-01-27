@@ -127,7 +127,10 @@ paths:
 
     post:
       summary: Create a new persona
-      description: Creates a new persona with voice traits, writing habits, and opinion framework
+      description: |
+        Creates a new persona with voice traits, writing habits, and opinion framework.
+        Only 4 fields are required (name, role, company, primaryAudience). All other fields are optional
+        and will be populated with intelligent defaults based on the primaryAudience if not provided.
       tags:
         - Personas
       requestBody:
@@ -136,6 +139,46 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePersonaRequest"
+            examples:
+              minimal:
+                summary: Minimal configuration (4 required fields only)
+                description: |
+                  Quick start example with only required fields. The system will apply intelligent defaults
+                  for voiceTraits, writingHabits, opinions, language, and ctaStyle based on the primaryAudience.
+                value:
+                  name: "Sarah Chen"
+                  role: "Product Manager"
+                  company: "TechCorp"
+                  primaryAudience: "professionals"
+              full:
+                summary: Full configuration (all fields provided)
+                description: Complete example with all optional fields explicitly set to override defaults.
+                value:
+                  name: "Sarah Chen"
+                  role: "Product Manager"
+                  company: "TechCorp"
+                  primaryAudience: "professionals"
+                  voiceTraits:
+                    ["analytical", "empathetic", "data-driven", "collaborative"]
+                  writingHabits:
+                    paragraphs: "medium"
+                    questions: "frequent"
+                    emojis: "sparing"
+                    structure: "mixed"
+                  opinions:
+                    strongBeliefs:
+                      [
+                        "User research drives product decisions",
+                        "Transparency builds trust",
+                      ]
+                    avoidsTopics: ["politics", "religion"]
+                  language:
+                    avoid: ["jargon", "buzzwords"]
+                    prefer: ["clear", "actionable", "data-driven"]
+                  ctaStyle:
+                    aggressiveness: "medium"
+                    patterns:
+                      ["Learn more", "Check it out", "Share your thoughts"]
       responses:
         201:
           description: Persona created successfully
@@ -495,7 +538,10 @@ paths:
 
     post:
       summary: Create a new brand
-      description: Creates a new brand with identity, guidelines, and asset management
+      description: |
+        Creates a new brand with identity, guidelines, and asset management.
+        Only 4 fields are required (name, ethos, coreValues, primaryAudience). All other fields are optional
+        and will be populated with intelligent defaults based on the primaryAudience if not provided.
       tags:
         - Brands
       requestBody:
@@ -504,6 +550,50 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBrandRequest"
+            examples:
+              minimal:
+                summary: Minimal configuration (4 required fields only)
+                description: |
+                  Quick start example with only required fields. The system will apply intelligent defaults
+                  for voiceGuidelines, contentStandards, visualIdentity, and other optional fields based on primaryAudience.
+                value:
+                  name: "TechCorp"
+                  ethos: "Empowering businesses through innovative technology solutions"
+                  coreValues: ["Innovation", "Integrity", "Customer Success"]
+                  primaryAudience: "professionals"
+              full:
+                summary: Full configuration (all fields provided)
+                description: Complete example with all optional fields explicitly set to override defaults.
+                value:
+                  name: "TechCorp"
+                  ethos: "Empowering businesses through innovative technology solutions"
+                  coreValues:
+                    [
+                      "Innovation",
+                      "Integrity",
+                      "Customer Success",
+                      "Excellence",
+                    ]
+                  primaryAudience: "professionals"
+                  voiceGuidelines:
+                    tone: ["approachable", "knowledgeable", "helpful"]
+                    style: ["conversational", "clear", "practical"]
+                    messaging: ["expertise", "collaboration", "growth"]
+                  contentStandards:
+                    qualityRequirements: ["accurate", "actionable", "engaging"]
+                    restrictions: ["avoid overly technical jargon"]
+                  visualIdentity:
+                    colorPalette: ["#2563EB", "#60A5FA", "#DBEAFE"]
+                    typography: ["sans-serif", "readable"]
+                    imagery: ["professional", "diverse", "relatable"]
+                  approvalThreshold: 0.7
+                  assets:
+                    - type: "internal"
+                      assetId: "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                    - type: "external"
+                      url: "https://example.com/hero.jpg"
+                      description: "Brand hero image for campaigns"
+                      contentType: "image/jpeg"
       responses:
         201:
           description: Brand created successfully
@@ -1952,11 +2042,6 @@ components:
         - role
         - company
         - primaryAudience
-        - voiceTraits
-        - writingHabits
-        - opinions
-        - language
-        - ctaStyle
       properties:
         name:
           type: string
@@ -1979,7 +2064,9 @@ components:
         primaryAudience:
           type: string
           enum: [executives, professionals, consumers, technical, creative]
-          description: Primary target audience for this persona's content
+          description: |
+            Primary target audience for this persona's content. When optional fields are not provided,
+            intelligent defaults will be applied based on this audience type.
           example: "professionals"
         voiceTraits:
           type: array
@@ -1987,16 +2074,34 @@ components:
             type: string
           minItems: 1
           maxItems: 10
-          description: Key voice characteristics and traits
+          description: |
+            Optional. Key voice characteristics and traits. If not provided, defaults will be applied
+            based on primaryAudience (e.g., professionals get ["knowledgeable", "practical", "collaborative"]).
           example: ["analytical", "empathetic", "data-driven", "collaborative"]
         writingHabits:
-          $ref: "#/components/schemas/WritingHabits"
+          allOf:
+            - $ref: "#/components/schemas/WritingHabits"
+            - description: |
+                Optional. Writing style preferences. If not provided, defaults will be applied based on
+                primaryAudience (e.g., professionals get medium paragraphs, frequent questions, sparing emojis).
         opinions:
-          $ref: "#/components/schemas/OpinionFramework"
+          allOf:
+            - $ref: "#/components/schemas/OpinionFramework"
+            - description: |
+                Optional. Opinion framework including beliefs and topics to avoid. If not provided, defaults
+                will be applied based on primaryAudience.
         language:
-          $ref: "#/components/schemas/LanguagePreferences"
+          allOf:
+            - $ref: "#/components/schemas/LanguagePreferences"
+            - description: |
+                Optional. Language preferences for words to avoid and prefer. If not provided, defaults will
+                be applied based on primaryAudience.
         ctaStyle:
-          $ref: "#/components/schemas/CTAStyle"
+          allOf:
+            - $ref: "#/components/schemas/CTAStyle"
+            - description: |
+                Optional. Call-to-action style preferences. If not provided, defaults will be applied based
+                on primaryAudience (e.g., professionals get medium aggressiveness).
 
     UpdatePersonaRequest:
       type: object
@@ -2413,9 +2518,6 @@ components:
         - ethos
         - coreValues
         - primaryAudience
-        - voiceGuidelines
-        - contentStandards
-        - visualIdentity
       properties:
         name:
           type: string
@@ -2440,26 +2542,44 @@ components:
         primaryAudience:
           type: string
           enum: [executives, professionals, consumers, technical, creative]
-          description: Primary target audience for brand content
+          description: |
+            Primary target audience for brand content. When optional fields are not provided,
+            intelligent defaults will be applied based on this audience type.
           example: "professionals"
         voiceGuidelines:
-          $ref: "#/components/schemas/VoiceGuidelines"
+          allOf:
+            - $ref: "#/components/schemas/VoiceGuidelines"
+            - description: |
+                Optional. Voice guidelines including tone, style, and messaging. If not provided, defaults
+                will be applied based on primaryAudience (e.g., professionals get approachable, knowledgeable tone).
         contentStandards:
-          $ref: "#/components/schemas/ContentStandards"
+          allOf:
+            - $ref: "#/components/schemas/ContentStandards"
+            - description: |
+                Optional. Content quality requirements and restrictions. If not provided, defaults will be
+                applied based on primaryAudience.
         visualIdentity:
-          $ref: "#/components/schemas/VisualIdentity"
+          allOf:
+            - $ref: "#/components/schemas/VisualIdentity"
+            - description: |
+                Optional. Visual identity including color palette, typography, and imagery preferences. If not
+                provided, defaults will be applied based on primaryAudience.
         approvalThreshold:
           type: number
           minimum: 0
           maximum: 1
-          description: Threshold for content approval (0-1 scale)
+          description: |
+            Optional. Threshold for content approval (0-1 scale). If not provided, defaults will be applied
+            based on primaryAudience (e.g., professionals get 0.7).
           example: 0.8
         assets:
           type: array
           items:
             $ref: "#/components/schemas/BrandAssetAssociation"
           maxItems: 50
-          description: Optional array of asset associations (internal and external)
+          description: |
+            Optional. Array of asset associations (internal and external). Asset metadata like addedAt and
+            addedBy will be auto-populated if not provided.
           example:
             [
               {
@@ -2786,6 +2906,11 @@ components:
                 "contentType": "image/jpeg",
               },
             ]
+        blendSchedule:
+          type: boolean
+          default: false
+          description: When true, the system will blend the new campaign's posts with existing active campaign posts to create an optimized schedule that respects cadence limits and avoids conflicts. The schedule blending agent analyzes all posts and reschedules them to maintain good distribution and avoid overwhelming the audience.
+          example: false
 
     CampaignResponse:
       type: object

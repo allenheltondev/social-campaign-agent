@@ -1,6 +1,7 @@
 import { Persona, CreatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { personaLogger } from '../../utils/logger.mjs';
+import { getPersonaDefaults } from '../../utils/persona-defaults.mjs';
 
 export const handler = async (event) => {
   try {
@@ -12,7 +13,19 @@ export const handler = async (event) => {
 
     const requestData = validateRequestBody(CreatePersonaRequestSchema, event.body);
 
-    const persona = await Persona.save(tenantId, requestData);
+    const defaults = getPersonaDefaults(requestData.primaryAudience);
+
+    const personaWithDefaults = {
+      ...defaults,
+      ...requestData,
+      voiceTraits: requestData.voiceTraits || defaults.voiceTraits,
+      writingHabits: requestData.writingHabits || defaults.writingHabits,
+      opinions: requestData.opinions || defaults.opinions,
+      language: requestData.language || defaults.language,
+      ctaStyle: requestData.ctaStyle || defaults.ctaStyle
+    };
+
+    const persona = await Persona.save(tenantId, personaWithDefaults);
 
     return formatResponse(201, { id: persona.id });
   } catch (error) {
