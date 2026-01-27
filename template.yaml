@@ -1448,6 +1448,36 @@ Resources:
         Variables:
           TABLE_NAME: !Ref PersonaTable
           ASSETS_BUCKET: !Ref AssetsBucket
+
+  ApproveAssetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - assets/approve-asset.mjs
+    Properties:
+      Handler: assets/approve-asset.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PersonaTable.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PersonaTable
+      Events:
+        ApproveAsset:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CampaignApi
+            Path: /assets/{assetId}/approval
+            Method: PUT
           ENABLE_CAMPAIGN_REFERENCE_CHECK: true
       Events:
         DeleteAsset:

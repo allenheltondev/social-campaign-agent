@@ -2,6 +2,7 @@ import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { CreateCampaignRequestSchema, validateRequestBody, generateCampaignId } from '../../models/campaign.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { campaignLogger } from '../../utils/logger.mjs';
+import { AssetPoolBuilder } from '../../utils/asset-pool-builder.mjs';
 
 const lambda = new LambdaClient();
 
@@ -14,6 +15,45 @@ export const handler = async (event) => {
     }
 
     const requestData = validateRequestBody(CreateCampaignRequestSchema, event.body);
+
+    const assetPool = await AssetPoolBuilder.buildAssetPool(
+      tenantId,
+      requestData.brandId || null,
+      requestData.assets || []
+    );
+
+    const assetPoolStats = AssetPoolBuilder.calculateAssetPoolStats(assetPool);
+
+    if (requestData.previewAssets) {
+      return formatResponse(200, {
+        assetPool: {
+          brandDefaults: assetPool.brandDefaults.map(asset => ({
+            type: asset.type,
+            assetId: asset.assetId,
+            url: asset.url,
+            description: asset.description,
+            contentType: asset.contentType,
+            usageIntent: asset.usageIntent,
+            isDefault: asset.isDefault,
+            category: asset.category,
+            source: asset.source
+          })),
+          campaignSpecific: assetPool.campaignSpecific.map(asset => ({
+            type: asset.type,
+            assetId: asset.assetId,
+            url: asset.url,
+            description: asset.description,
+            contentType: asset.contentType,
+            usageIntent: asset.usageIntent,
+            isDefault: asset.isDefault,
+            category: asset.category,
+            source: asset.source
+          }))
+        },
+        assetPoolStats,
+        message: 'Asset pool preview generated. Submit without previewAssets to create campaign.'
+      });
+    }
 
     const campaignId = generateCampaignId();
 
@@ -53,6 +93,9 @@ export const handler = async (event) => {
     } else {
       campaign.metadata = { source: 'api' };
     }
+
+    campaign.assetPool = assetPool;
+    campaign.assetPoolStats = assetPoolStats;
 
     await lambda.send(new InvokeCommand({
       FunctionName: `${process.env.BUILD_CAMPAIGN_FUNCTION_NAME}:$LATEST`,

@@ -32,6 +32,30 @@ const ErrorTrackingSchema = z.object({
   retryable: z.boolean()
 }).nullable();
 
+const AssetSelectionReasoningSchema = z.object({
+  primaryFactor: z.enum(['usage-intent', 'description-match', 'platform-fit', 'default-required', 'persona-alignment']),
+  confidence: z.enum(['high', 'medium', 'low']),
+  explanation: z.string().min(10).max(1000),
+  alternativesConsidered: z.array(z.string()).optional()
+}).nullable();
+
+const NoAssetReasonSchema = z.object({
+  reason: z.enum(['no-suitable-match', 'insufficient-assets', 'content-better-without', 'all-assets-used']),
+  explanation: z.string().min(10).max(1000)
+}).nullable();
+
+const AssignedAssetSchema = z.object({
+  type: z.enum(['internal', 'external']),
+  assetId: z.string().nullable(),
+  url: z.string().nullable(),
+  description: z.string(),
+  contentType: z.string(),
+  source: z.enum(['brand', 'campaign']),
+  isDefault: z.boolean(),
+  selectionReason: AssetSelectionReasoningSchema,
+  assignedAt: z.string().datetime()
+}).nullable();
+
 export const SocialPostSchema = z.object({
   id: z.string(),
   campaignId: z.string(),
@@ -46,6 +70,8 @@ export const SocialPostSchema = z.object({
     videoRequired: z.boolean(),
     videoDescription: z.string().optional()
   }).optional(),
+  assignedAsset: AssignedAssetSchema.optional(),
+  noAssetReason: NoAssetReasonSchema.optional(),
   content: z.object({
     text: z.string(),
     hashtags: z.array(z.string()).optional(),
@@ -225,6 +251,12 @@ export class SocialPost {
     }
     if (cleanPost.versions === null || cleanPost.versions === undefined) {
       delete cleanPost.versions;
+    }
+    if (cleanPost.assignedAsset === null || cleanPost.assignedAsset === undefined) {
+      delete cleanPost.assignedAsset;
+    }
+    if (cleanPost.noAssetReason === null || cleanPost.noAssetReason === undefined) {
+      delete cleanPost.noAssetReason;
     }
 
     return SocialPostSchema.parse(cleanPost);

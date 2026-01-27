@@ -2135,6 +2135,28 @@ components:
           enum: [active, inactive, pending]
           description: Current brand status
           example: "active"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrandAssetAssociation"
+          description: Array of asset associations (internal and external)
+          example:
+            [
+              {
+                "type": "internal",
+                "assetId": "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "addedAt": "2024-01-15T10:30:00Z",
+                "addedBy": "user_123",
+              },
+              {
+                "type": "external",
+                "url": "https://example.com/hero.jpg",
+                "description": "Brand hero image",
+                "contentType": "image/jpeg",
+                "addedAt": "2024-01-15T10:30:00Z",
+                "addedBy": "user_123",
+              },
+            ]
         createdAt:
           type: string
           format: date-time
@@ -2305,6 +2327,85 @@ components:
           description: When the asset was uploaded
           example: "2024-01-15T16:20:00Z"
 
+    BrandAssetAssociation:
+      oneOf:
+        - $ref: "#/components/schemas/InternalAssetAssociation"
+        - $ref: "#/components/schemas/ExternalAssetAssociation"
+
+    InternalAssetAssociation:
+      type: object
+      required:
+        - type
+        - assetId
+      properties:
+        type:
+          type: string
+          enum: [internal]
+          description: Internal asset type
+          example: "internal"
+        assetId:
+          type: string
+          description: Reference to internal asset ID
+          example: "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        addedAt:
+          type: string
+          format: date-time
+          description: When the asset was associated with the brand
+          example: "2024-01-15T10:30:00Z"
+        addedBy:
+          type: string
+          description: User who added the asset association
+          example: "user_123"
+
+    ExternalAssetAssociation:
+      type: object
+      required:
+        - type
+        - url
+        - description
+        - contentType
+      properties:
+        type:
+          type: string
+          enum: [external]
+          description: External asset type
+          example: "external"
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+          description: HTTPS URL of the external asset
+          example: "https://example.com/images/brand-hero.jpg"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Asset description explaining content and purpose
+          example: "Brand hero image from company website"
+        contentType:
+          type: string
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
+          description: MIME type of the external asset
+          example: "image/jpeg"
+        addedAt:
+          type: string
+          format: date-time
+          description: When the asset was associated with the brand
+          example: "2024-01-15T10:30:00Z"
+        addedBy:
+          type: string
+          description: User who added the asset association
+          example: "user_123"
+
     CreateBrandRequest:
       type: object
       required:
@@ -2353,6 +2454,25 @@ components:
           maximum: 1
           description: Threshold for content approval (0-1 scale)
           example: 0.8
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrandAssetAssociation"
+          maxItems: 50
+          description: Optional array of asset associations (internal and external)
+          example:
+            [
+              {
+                "type": "internal",
+                "assetId": "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+              },
+              {
+                "type": "external",
+                "url": "https://example.com/hero.jpg",
+                "description": "Brand hero image",
+                "contentType": "image/jpeg",
+              },
+            ]
 
     UpdateBrandRequest:
       type: object
@@ -2394,6 +2514,12 @@ components:
           type: string
           enum: [active, inactive, pending]
           description: Current brand status
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrandAssetAssociation"
+          maxItems: 50
+          description: Optional array of asset associations (internal and external)
 
     UploadAssetRequest:
       type: object
@@ -2434,6 +2560,158 @@ components:
           maxItems: 10
           description: Tags for asset organization
           example: ["logo", "primary", "digital"]
+
+    CampaignAssetInput:
+      oneOf:
+        - $ref: "#/components/schemas/InternalCampaignAssetInput"
+        - $ref: "#/components/schemas/ExternalCampaignAssetInput"
+
+    InternalCampaignAssetInput:
+      type: object
+      required:
+        - type
+        - assetId
+      properties:
+        type:
+          type: string
+          enum: [internal]
+          description: Internal asset type
+          example: "internal"
+        assetId:
+          type: string
+          description: Reference to internal asset ID
+          example: "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        addedAt:
+          type: string
+          format: date-time
+          description: Timestamp when asset was added (auto-generated if not provided)
+          example: "2024-01-15T10:30:00Z"
+
+    ExternalCampaignAssetInput:
+      type: object
+      required:
+        - type
+        - url
+        - description
+        - contentType
+      properties:
+        type:
+          type: string
+          enum: [external]
+          description: External asset type
+          example: "external"
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+          description: HTTPS URL of the external asset
+          example: "https://example.com/campaign-image.jpg"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Asset description explaining content and purpose
+          example: "Campaign-specific promotional image"
+        contentType:
+          type: string
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
+          description: MIME type of the external asset
+          example: "image/jpeg"
+        addedAt:
+          type: string
+          format: date-time
+          description: Timestamp when asset was added (auto-generated if not provided)
+          example: "2024-01-15T10:30:00Z"
+
+    AssetPool:
+      type: object
+      properties:
+        brandAssets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetPoolItem"
+          description: Assets inherited from the brand
+          example:
+            [
+              {
+                "type": "internal",
+                "assetId": "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "url": "https://s3.amazonaws.com/...",
+                "description": "Brand logo",
+                "contentType": "image/png",
+                "source": "brand",
+              },
+            ]
+        campaignAssets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetPoolItem"
+          description: Campaign-specific assets
+          example:
+            [
+              {
+                "type": "external",
+                "url": "https://example.com/campaign-image.jpg",
+                "description": "Campaign promotional image",
+                "contentType": "image/jpeg",
+                "source": "campaign",
+              },
+            ]
+
+    AssetPoolItem:
+      type: object
+      required:
+        - type
+        - description
+        - contentType
+        - source
+      properties:
+        type:
+          type: string
+          enum: [internal, external]
+          description: Asset type
+          example: "internal"
+        assetId:
+          type: string
+          nullable: true
+          description: Internal asset ID (null for external assets)
+          example: "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        url:
+          type: string
+          description: Asset URL (presigned for internal, direct for external)
+          example: "https://s3.amazonaws.com/bucket/asset.jpg"
+        description:
+          type: string
+          description: Asset description
+          example: "Brand logo for social media"
+        contentType:
+          type: string
+          enum:
+            [
+              image/jpeg,
+              image/png,
+              image/gif,
+              image/webp,
+              video/mp4,
+              video/mov,
+              video/avi,
+            ]
+          description: MIME type of the asset
+          example: "image/png"
+        source:
+          type: string
+          enum: [brand, campaign]
+          description: Source of the asset (brand or campaign-specific)
+          example: "brand"
 
     CreateCampaignRequest:
       type: object
@@ -2489,6 +2767,25 @@ components:
               maximum: 90
               description: Number of days for campaign (alternative to date range)
               example: 30
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignAssetInput"
+          maxItems: 50
+          description: Optional array of campaign-specific assets (internal and external)
+          example:
+            [
+              {
+                "type": "internal",
+                "assetId": "asset_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+              },
+              {
+                "type": "external",
+                "url": "https://example.com/campaign-image.jpg",
+                "description": "Campaign-specific promotional image",
+                "contentType": "image/jpeg",
+              },
+            ]
 
     CampaignResponse:
       type: object
@@ -2525,6 +2822,8 @@ components:
               format: date-time
             numberOfDays:
               type: integer
+        assetPool:
+          $ref: "#/components/schemas/AssetPool"
         status:
           type: string
           enum: [planning, generating, completed, failed]

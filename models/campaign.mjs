@@ -91,13 +91,43 @@ const AssetOverridesSchema = z.object({
 const InternalAssetReferenceSchema = z.object({
   assetId: z.string(),
   type: z.literal('internal'),
-  addedAt: z.string()
+  addedAt: z.string().optional()
 });
 
 const CampaignAssetSchema = z.union([
   InternalAssetReferenceSchema,
   ExternalAssetSchema
 ]);
+
+const UsageIntentSchema = z.object({
+  platforms: z.array(z.string()).nullable(),
+  themes: z.array(z.string()).nullable(),
+  frequency: z.string().nullable()
+}).nullable();
+
+const AssetPoolItemSchema = z.object({
+  type: z.enum(['internal', 'external']),
+  assetId: z.string().nullable(),
+  url: z.string().nullable(),
+  description: z.string(),
+  contentType: z.string(),
+  usageIntent: UsageIntentSchema.optional(),
+  isDefault: z.boolean(),
+  category: z.string().nullable().optional(),
+  source: z.enum(['brand', 'campaign'])
+});
+
+const AssetPoolSchema = z.object({
+  brandDefaults: z.array(AssetPoolItemSchema),
+  campaignSpecific: z.array(AssetPoolItemSchema)
+}).nullable();
+
+const AssetPoolStatsSchema = z.object({
+  totalAssets: z.number().int().min(0),
+  brandAssets: z.number().int().min(0),
+  campaignAssets: z.number().int().min(0),
+  defaultAssets: z.number().int().min(0)
+}).nullable();
 
 const ErrorTrackingSchema = z.object({
   code: z.string(),
@@ -132,6 +162,8 @@ export const CampaignSchema = z.object({
   messaging: MessagingSchema,
   assetOverrides: AssetOverridesSchema,
   assets: z.array(CampaignAssetSchema).nullable().optional(),
+  assetPool: AssetPoolSchema.optional(),
+  assetPoolStats: AssetPoolStatsSchema.optional(),
   status: StatusSchema,
   approval: ApprovalMetadataSchema.optional(),
   callbackId: z.string().nullable().optional(),
@@ -172,10 +204,11 @@ export const CreateCampaignRequestSchema = z.object({
     distribution: DistributionSchema.nullable()
   }),
   schedule: ScheduleSchema,
-  cadenceOverrides: CadenceOverridesSchema,
-  messaging: MessagingSchema,
-  assetOverrides: AssetOverridesSchema,
+  cadenceOverrides: CadenceOverridesSchema.nullable(),
+  messaging: MessagingSchema.nullable(),
+  assetOverrides: AssetOverridesSchema.nullable(),
   assets: z.array(CampaignAssetSchema).nullable().optional(),
+  previewAssets: z.boolean().optional(),
   metadata: z.object({
     source: z.enum(['wizard', 'api', 'import']).default('api'),
     externalRef: z.string().nullable()

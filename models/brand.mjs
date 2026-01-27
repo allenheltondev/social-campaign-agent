@@ -6,6 +6,49 @@ import { brandLogger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
+const UsageIntentSchema = z.object({
+  platforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook'])).optional(),
+  themes: z.array(z.string().trim().min(1).max(100)).optional(),
+  frequency: z.enum(['high', 'medium', 'low']).optional()
+}).optional().nullable();
+
+const InternalAssetAssociationSchema = z.object({
+  type: z.literal('internal'),
+  assetId: z.string(),
+  usageIntent: UsageIntentSchema,
+  isDefault: z.boolean().default(false),
+  categories: z.array(z.string().trim().min(1).max(100)).max(10).optional().nullable(),
+  addedAt: z.string(),
+  addedBy: z.string()
+});
+
+const ExternalAssetAssociationSchema = z.object({
+  type: z.literal('external'),
+  url: z.string().url().refine(url => url.startsWith('https://'), {
+    message: 'External asset URLs must use HTTPS protocol'
+  }),
+  description: z.string().trim().min(10).max(500),
+  contentType: z.string().trim().min(1).max(100),
+  usageIntent: UsageIntentSchema,
+  isDefault: z.boolean().default(false),
+  categories: z.array(z.string().trim().min(1).max(100)).max(10).optional().nullable(),
+  addedAt: z.string(),
+  addedBy: z.string()
+});
+
+const BrandAssetAssociationSchema = z.discriminatedUnion('type', [
+  InternalAssetAssociationSchema,
+  ExternalAssetAssociationSchema
+]);
+
+const AssetLibraryStatsSchema = z.object({
+  totalAssets: z.number().int().min(0).default(0),
+  internalAssets: z.number().int().min(0).default(0),
+  externalAssets: z.number().int().min(0).default(0),
+  defaultAssets: z.number().int().min(0).default(0),
+  lastUpdated: z.string()
+}).optional().nullable();
+
 export const BrandSchema = z.object({
   brandId: z.string(),
   tenantId: z.string(),
@@ -63,6 +106,8 @@ export const BrandSchema = z.object({
     threshold: z.number().min(0).max(1),
     mode: z.enum(['auto_approve', 'require_review_below_threshold', 'always_review'])
   }).optional(),
+  assets: z.array(BrandAssetAssociationSchema).max(50).optional().nullable(),
+  assetLibraryStats: AssetLibraryStatsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
   status: z.enum(['active', 'inactive', 'archived'])
@@ -94,19 +139,29 @@ export const BrandAssetSchema = z.object({
   updatedAt: z.string()
 });
 
+export {
+  UsageIntentSchema,
+  InternalAssetAssociationSchema,
+  ExternalAssetAssociationSchema,
+  BrandAssetAssociationSchema,
+  AssetLibraryStatsSchema
+};
+
 export const CreateBrandRequestSchema = BrandSchema.omit({
   brandId: true,
   tenantId: true,
   createdAt: true,
   updatedAt: true,
-  status: true
+  status: true,
+  assetLibraryStats: true
 }).partial({
   platformGuidelines: true,
   audienceProfile: true,
   pillars: true,
   claimsPolicy: true,
   ctaLibrary: true,
-  approvalPolicy: true
+  approvalPolicy: true,
+  assets: true
 });
 
 export const UpdateBrandRequestSchema = CreateBrandRequestSchema.partial();
@@ -274,13 +329,16 @@ export class Brand {
       const now = new Date().toISOString();
       const brandId = brand.id || generateBrandId();
 
+      const assetLibraryStats = this._calculateAssetLibraryStats(brand.assets, now);
+
       const brandWithDefaults = {
         ...brand,
         brandId,
         tenantId,
         createdAt: brand.createdAt || now,
         updatedAt: now,
-        status: brand.status || 'active'
+        status: brand.status || 'active',
+        assetLibraryStats
       };
 
       const validatedBrand = this.validateEntity(brandWithDefaults);
@@ -314,6 +372,11 @@ export class Brand {
 
       const validatedUpdateData = this.validateUpdateData(updateData);
       const now = new Date().toISOString();
+
+      if (validatedUpdateData.assets !== undefined) {
+        validatedUpdateData.assetLibraryStats = this._calculateAssetLibraryStats(validatedUpdateData.assets, now);
+      }
+
       const updateDataWithTimestamp = {
         ...validatedUpdateData,
         updatedAt: now
@@ -474,6 +537,8 @@ export class Brand {
     delete cleanBrand.sk;
     delete cleanBrand.GSI1PK;
     delete cleanBrand.GSI1SK;
+    delete cleanBrand.GSI2PK;
+    delete cleanBrand.GSI2SK;
 
     delete cleanBrand.tenantId;
 
@@ -490,6 +555,8 @@ export class Brand {
     delete cleanBrand.sk;
     delete cleanBrand.GSI1PK;
     delete cleanBrand.GSI1SK;
+    delete cleanBrand.GSI2PK;
+    delete cleanBrand.GSI2SK;
 
     delete cleanBrand.tenantId;
 
@@ -502,12 +569,15 @@ export class Brand {
   static _transformToDynamoDB(tenantId, brand) {
     const now = new Date().toISOString();
     const brandId = brand.id || brand.brandId;
+    const status = brand.status || 'active';
 
     return {
       pk: `${tenantId}#${brandId}`,
       sk: 'metadata',
       GSI1PK: tenantId,
       GSI1SK: `BRAND#${now}`,
+      GSI2PK: `${tenantId}#${status}`,
+      GSI2SK: `BRAND#${now}`,
       ...brand,
       brandId,
       tenantId
@@ -615,6 +685,91 @@ export class Brand {
     return {
       avoidTopics: brand?.contentStandards?.restrictions || [],
       avoidPhrases: brand?.contentStandards?.restrictions || []
+    };
+  }
+
+  static _calculateAssetLibraryStats(assets, timestamp) {
+    if (!assets || assets.length === 0) {
+      return null;
+    }
+
+    const stats = {
+      totalAssets: assets.length,
+      internalAssets: assets.filter(a => a.type === 'internal').length,
+      externalAssets: assets.filter(a => a.type === 'external').length,
+      defaultAssets: assets.filter(a => a.isDefault === true).length,
+      lastUpdated: timestamp
+    };
+
+    return stats;
+  }
+
+  static async validateAssetAssociations(tenantId, assets) {
+    if (!assets || assets.length === 0) {
+      return { valid: true, errors: [] };
+    }
+
+    const errors = [];
+    const { Asset } = await import('./asset.mjs');
+
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
+
+      if (asset.type === 'internal') {
+        try {
+          const existingAsset = await Asset.findById(tenantId, asset.assetId);
+          if (!existingAsset) {
+            errors.push({
+              index: i,
+              field: `assets[${i}].assetId`,
+              message: `Asset ${asset.assetId} does not exist`
+            });
+          }
+        } catch (error) {
+          errors.push({
+            index: i,
+            field: `assets[${i}].assetId`,
+            message: `Failed to validate asset ${asset.assetId}`
+          });
+        }
+      } else if (asset.type === 'external') {
+        if (!asset.url.startsWith('https://')) {
+          errors.push({
+            index: i,
+            field: `assets[${i}].url`,
+            message: 'External asset URLs must use HTTPS protocol'
+          });
+        }
+
+        if (!asset.description || asset.description.trim().length < 10) {
+          errors.push({
+            index: i,
+            field: `assets[${i}].description`,
+            message: 'External asset description must be at least 10 characters'
+          });
+        }
+
+        if (asset.description && asset.description.length > 500) {
+          errors.push({
+            index: i,
+            field: `assets[${i}].description`,
+            message: 'External asset description must not exceed 500 characters'
+          });
+        }
+
+        if (!asset.contentType) {
+          errors.push({
+            index: i,
+            field: `assets[${i}].contentType`,
+            message: 'External asset contentType is required'
+          });
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
     };
   }
 }

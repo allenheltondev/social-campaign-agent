@@ -3,10 +3,134 @@ import { Campaign } from '../../models/campaign.mjs';
 import { SocialPost } from '../../models/social-post.mjs';
 import { Brand } from '../../models/brand.mjs';
 import { createSocialPostsTool } from './tools.mjs';
-import { AssetResolver } from '../../utils/asset-resolver.mjs';
+import { AssetPoolBuilder } from '../../utils/asset-pool-builder.mjs';
 import { agentLogger } from '../../utils/logger.mjs';
 
-const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, personaConfigs, assetAnalysis) => {
+export const buildBrandGuidelinesSection = (brandConfig) => {
+  if (!brandConfig) {
+    return '**BRAND GUIDELINES**: No brand specified - use general professional standards';
+  }
+
+  const sections = [];
+
+  if (brandConfig.voiceGuidelines?.tone) {
+    const tone = Array.isArray(brandConfig.voiceGuidelines.tone)
+      ? brandConfig.voiceGuidelines.tone.join(', ')
+      : brandConfig.voiceGuidelines.tone;
+    sections.push(`- Voice Tone: ${tone}`);
+  }
+
+  if (brandConfig.contentStandards?.restrictions?.length > 0) {
+    sections.push(`- Content Restrictions: ${brandConfig.contentStandards.restrictions.join(', ')}`);
+  }
+
+  if (brandConfig.ethos) {
+    sections.push(`- Brand Ethos: ${brandConfig.ethos}`);
+  }
+
+  if (brandConfig.visualMotifs?.length > 0) {
+    sections.push(`- Visual Motifs: ${brandConfig.visualMotifs.join(', ')}`);
+  }
+
+  if (sections.length === 0) {
+    return '**BRAND GUIDELINES**: Brand specified but no detailed guidelines provided';
+  }
+
+  return `**BRAND GUIDELINES**:\n${sections.join('\n')}`;
+};
+
+export const buildPersonaVoiceSection = (personaConfigs) => {
+  if (!personaConfigs || personaConfigs.length === 0) {
+    return '**PERSONA VOICE TRAITS**: No personas configured';
+  }
+
+  const personaDetails = personaConfigs.map(persona => {
+    const traits = [];
+
+    if (persona.voiceTraits) {
+      if (persona.voiceTraits.directness) {
+        traits.push(`Directness: ${persona.voiceTraits.directness}`);
+      }
+      if (persona.voiceTraits.formality) {
+        traits.push(`Formality: ${persona.voiceTraits.formality}`);
+      }
+      if (persona.voiceTraits.opinionation) {
+        traits.push(`Opinionation: ${persona.voiceTraits.opinionation}`);
+      }
+    }
+
+    if (persona.ctaComfort) {
+      traits.push(`CTA Comfort: ${persona.ctaComfort}`);
+    }
+
+    const traitsStr = traits.length > 0 ? ` | Voice: ${traits.join(', ')}` : '';
+
+    return `- ${persona.name} (${persona.personaId}): ${persona.role} at ${persona.company}${traitsStr}`;
+  }).join('\n');
+
+  return `**PERSONA VOICE TRAITS**:\n${personaDetails}`;
+};
+
+export const buildAssetSection = (assetContext) => {
+  if (!assetContext.hasAssets) {
+    return '**CONTENT ASSETS**: No assets provided. Generate creative asset ideas and descriptions for posts that would benefit from visual content.';
+  }
+
+  const assetList = assetContext.availableAssets.map((asset, index) => {
+    const parts = [
+      `Asset ${index + 1}`,
+      asset.contentType,
+      `"${asset.description}"`,
+      `Source: ${asset.source}`
+    ];
+
+    if (asset.isDefault) {
+      parts.push('DEFAULT (must use)');
+    }
+
+    if (asset.category) {
+      parts.push(`Category: ${asset.category}`);
+    }
+
+    if (asset.usageIntent) {
+      const intentParts = [];
+      if (asset.usageIntent.platforms?.length > 0) {
+        intentParts.push(`Platforms: ${asset.usageIntent.platforms.join(', ')}`);
+      }
+      if (asset.usageIntent.themes?.length > 0) {
+        intentParts.push(`Themes: ${asset.usageIntent.themes.join(', ')}`);
+      }
+      if (asset.usageIntent.frequency) {
+        intentParts.push(`Frequency: ${asset.usageIntent.frequency}`);
+      }
+      if (intentParts.length > 0) {
+        parts.push(`Usage: ${intentParts.join('; ')}`);
+      }
+    }
+
+    return `- ${parts.join(' | ')}`;
+  }).join('\n');
+
+  const defaultAssetCount = assetContext.defaultAssets?.length || 0;
+  const defaultAssetNote = defaultAssetCount > 0
+    ? `\n- ${defaultAssetCount} DEFAULT asset(s) MUST be used in the campaign`
+    : '';
+
+  return `**AVAILABLE CONTENT ASSETS** (${assetContext.totalAssets} assets available):
+${assetList}
+
+**ASSET SELECTION GUIDANCE**:
+- Evaluate asset descriptions and usage intent when matching to posts
+- Prioritize assets with matching usage intent (platforms, themes)
+- Consider platform requirements and content topics
+- DEFAULT assets are REQUIRED - must be used in appropriate posts${defaultAssetNote}
+- Non-default assets are optional - use when they enhance the post
+- Each asset should be used AT MOST once across the entire campaign
+- Generate posts without assets when no suitable match exists
+- Document selection reasoning for transparency`;
+};
+
+const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, personaConfigs, assetContext) => {
   const startDate = new Date(campaign.schedule.startDate);
   const endDate = new Date(campaign.schedule.endDate);
   const durationDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
@@ -33,31 +157,19 @@ const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, person
     facebook: assetOverrides.facebook ?? assetDefaults.facebook ?? true
   };
 
-  let assetSection = '';
-  if (assetAnalysis.hasAssets) {
-    assetSection = `
-**AVAILABLE CONTENT ASSETS** (${assetAnalysis.totalAssets} assets available - use strategically, not required for all posts):
-${assetAnalysis.availableAssets.map((asset, index) =>
-    `- Asset ${index + 1}: ${asset.contentType} | "${asset.description}" | Type: ${asset.type}`
-  ).join('\n')}
-
-**ASSET UTILIZATION APPROACH**:
-- Assets are OPTIONAL content - use them when they enhance the post
-- Each asset should be used AT MOST once across the entire campaign
-- Match assets to posts based on content relevance and platform suitability
-- Posts do NOT require assets - create posts without assets when appropriate
-- Consider asset descriptions as inspiration for topics and content themes
-- Include asset references in post metadata only when using an asset`;
-  } else {
-    assetSection = `
-**CONTENT ASSETS**: No assets provided. Generate creative asset ideas and descriptions for posts that would benefit from visual content.`;
-  }
+  const brandGuidelines = buildBrandGuidelinesSection(brandConfig);
+  const personaVoiceTraits = buildPersonaVoiceSection(personaConfigs);
+  const assetSection = buildAssetSection(assetContext);
 
   return `Plan and create social media posts for Campaign ${campaignId}
 
 **CAMPAIGN OBJECTIVE**: ${campaign.brief.objective}
 **DESCRIPTION**: ${campaign.brief.description}
 ${campaign.brandId ? `**BRAND ID**: ${campaign.brandId}` : '**BRAND**: No brand specified'}
+
+${brandGuidelines}
+
+${personaVoiceTraits}
 
 **TIMELINE**:
 - Start: ${campaign.schedule.startDate}
@@ -81,13 +193,9 @@ ${messagingPillars.map(p => `- ${p.name}: ${Math.round(p.weight * 100)}% of post
 ${campaign.messaging?.campaignAvoidTopics?.length > 0 ? `Campaign-specific: ${campaign.messaging.campaignAvoidTopics.join(', ')}` : ''}
 ${brandConfig?.contentStandards?.restrictions?.length > 0 ? `Brand-level: ${brandConfig.contentStandards.restrictions.join(', ')}` : ''}
 
-**BRAND VOICE**: ${Array.isArray(brandConfig?.voiceGuidelines?.tone) ? brandConfig.voiceGuidelines.tone.join(', ') : brandConfig?.voiceGuidelines?.tone || 'professional'}
-
-**PERSONAS** (${personaConfigs.length} - distribute posts across all personas):
-${personaConfigs.map(p => `- ID: ${p.personaId} | Name: ${p.name} (${p.role}) | Company: ${p.company} | Audience: ${p.primaryAudience}`).join('\n')}
-
 **ASSET REQUIREMENTS** (per platform):
 ${Object.entries(assetRequirements).map(([platform, required]) => `- ${platform}: ${required ? 'Image REQUIRED' : 'Image optional'}`).join('\n')}
+
 ${assetSection}
 
 **PRIMARY CTA**: ${campaign.brief.primaryCTA ? `"${campaign.brief.primaryCTA.text}" → ${campaign.brief.primaryCTA.url}` : 'None specified'}
@@ -95,7 +203,7 @@ ${assetSection}
 **YOUR TASK**:
 1. Calculate the optimal number of posts based on timeline and cadence requirements
 2. Create a balanced distribution across:
-   - All ${personaConfigs.length} personas
+   - All ${personaConfigs.length} personas (consider their voice traits)
    - All ${campaign.participants.platforms.length} platforms
    - All ${messagingPillars.length} messaging pillars (respecting weights)
 3. Schedule posts strategically:
@@ -107,18 +215,19 @@ ${assetSection}
    - personaId: MUST use exact persona ID from the list above (${personaConfigs.map(p => p.personaId).join(', ')})
    - platform: Which platform it's for
    - scheduledAt: When to publish (ISO 8601 format in UTC)
-   - topic: Specific topic aligned with messaging pillar${assetAnalysis.hasAssets ? ' and available asset descriptions' : ''}
+   - topic: Specific topic aligned with messaging pillar${assetContext.hasAssets ? ' and available asset descriptions' : ''}
    - intent: Choose from [announce, educate, opinion, invite_discussion, social_proof, reminder]
    - assetRequirements: Object with imageRequired (boolean), imageDescription (string or null), videoRequired (boolean), videoDescription (string or null)
    - references: Array of reference objects or null - include asset references ONLY when using available assets
    - messagingPillar: Which pillar this post supports (optional string)
-${assetAnalysis.hasAssets ? `5. ASSET ASSIGNMENT APPROACH:
-   - Available assets are OPTIONAL content - use them to enhance posts when relevant
+${assetContext.hasAssets ? `5. ASSET SELECTION APPROACH:
+   - Match assets to posts based on usage intent, description, and platform suitability
+   - DEFAULT assets MUST be used - find appropriate posts for them
+   - Prioritize assets with matching usage intent (platforms, themes, frequency)
+   - Consider persona voice traits when selecting visual content
    - Each asset can be used AT MOST once across the entire campaign
-   - Match assets to posts based on topic relevance and platform suitability
-   - Many posts should NOT use assets - create engaging content without forced asset usage
-   - When using an asset, add reference: { type: "assetId", value: "asset_id_here" }
-   - Generate creative asset ideas for posts that would benefit from visuals but don't have matching assets` : `5. ASSET IDEA GENERATION:
+   - Generate posts without assets when no suitable match exists
+   - When using an asset, add reference: { type: "assetId", value: "asset_id_here" }` : `5. ASSET IDEA GENERATION:
    - Create compelling asset descriptions for posts that would benefit from visual content
    - Generate creative concepts for images, graphics, or videos that would enhance the message
    - Consider platform-specific visual requirements and best practices
@@ -130,7 +239,7 @@ ${assetAnalysis.hasAssets ? `5. ASSET ASSIGNMENT APPROACH:
 
 CRITICAL: Use ONLY the exact persona IDs listed above. Do not make up or generate new persona IDs.
 IMPORTANT: Call the tool exactly once with all posts in a single array. Do not call it multiple times.
-${assetAnalysis.hasAssets ? 'ASSET APPROACH: Assets are optional content to enhance posts - use strategically when relevant, not for every post.' : 'ASSET CREATIVITY: Generate compelling visual concepts and descriptions for posts that would benefit from assets.'}`;
+${assetContext.hasAssets ? 'ASSET APPROACH: Match assets intelligently based on usage intent, platform, and persona voice traits.' : 'ASSET CREATIVITY: Generate compelling visual concepts and descriptions for posts that would benefit from assets.'}`;
 };
 
 const model = new BedrockModel({
@@ -150,8 +259,17 @@ Your responsibilities:
 1. Calculate optimal post count based on timeline and cadence
 2. Distribute posts across personas, platforms, and messaging pillars
 3. Schedule posts respecting allowed days and avoiding blackout dates
-4. Handle assets flexibly - use when relevant, not required for every post
-5. Generate asset ideas when none are provided
+4. Match assets intelligently based on usage intent, platform, and persona voice traits
+5. Ensure default assets are used in appropriate posts
+6. Generate posts without assets when no suitable match exists
+
+Asset Selection Principles:
+- Evaluate asset descriptions and usage intent metadata
+- Prioritize assets with matching usage intent (platforms, themes, frequency)
+- Consider platform requirements and content topics
+- Respect persona voice traits when selecting visual content
+- Default assets MUST be used - find appropriate posts for them
+- Non-default assets are optional - use when they enhance the post
 
 You MUST use the create_social_posts tool once with all posts in the posts array.
 
@@ -160,38 +278,33 @@ CRITICAL: Only use persona IDs explicitly provided in the campaign prompt. Never
   tools: [createSocialPostsTool]
 });
 
-const analyzeAssets = async (tenantId, assets) => {
-  if (!assets || assets.length === 0) {
-    return {
-      hasAssets: false,
-      totalAssets: 0,
-      availableAssets: [],
-      unavailableAssets: []
-    };
-  }
-
+const buildAssetContext = async (tenantId, brandId, campaignAssets) => {
   try {
-    const resolvedAssets = await AssetResolver.resolveMultipleAssets(tenantId, assets);
-
-    const availableAssets = resolvedAssets.filter(asset => asset.available);
+    const assetPool = await AssetPoolBuilder.buildAssetPool(tenantId, brandId, campaignAssets || []);
+    const planningContext = AssetPoolBuilder.buildPlanningContext(assetPool);
 
     return {
-      hasAssets: availableAssets.length > 0,
-      totalAssets: availableAssets.length,
-      availableAssets: availableAssets.map(asset => ({
-        assetId: asset.assetId,
+      hasAssets: planningContext.totalAssets > 0,
+      totalAssets: planningContext.totalAssets,
+      availableAssets: planningContext.availableAssets.map(asset => ({
+        assetId: asset.assetId || `external_${asset.url}`,
         type: asset.type,
         description: asset.description,
         contentType: asset.contentType,
-        accessUrl: asset.accessUrl
+        source: asset.source,
+        isDefault: asset.isDefault,
+        category: asset.category,
+        usageIntent: asset.usageIntent
       })),
-      unavailableAssets: []
+      defaultAssets: planningContext.defaultAssets,
+      hasDefaultAssets: planningContext.hasDefaultAssets
     };
   } catch (error) {
-    agentLogger.error('Asset analysis failed', {
-      operation: 'analyze-assets',
+    agentLogger.error('Asset context building failed', {
+      operation: 'build-asset-context',
       tenantId,
-      assetCount: assets.length,
+      brandId,
+      campaignAssetCount: campaignAssets?.length || 0,
       errorName: error.name,
       errorMessage: error.message
     });
@@ -200,7 +313,8 @@ const analyzeAssets = async (tenantId, assets) => {
       hasAssets: false,
       totalAssets: 0,
       availableAssets: [],
-      unavailableAssets: []
+      defaultAssets: [],
+      hasDefaultAssets: false
     };
   }
 };
@@ -215,9 +329,13 @@ export const run = async (tenantId, campaignData) => {
 
     const { campaign: fullCampaign, brandConfig, personaConfigs } = await Campaign.loadFullConfiguration(tenantId, campaignId);
 
-    const assetAnalysis = await analyzeAssets(tenantId, fullCampaign?.assets || campaign?.assets);
+    const assetContext = await buildAssetContext(
+      tenantId,
+      fullCampaign?.brandId || campaign?.brandId,
+      fullCampaign?.assets || campaign?.assets
+    );
 
-    const prompt = buildCampaignPrompt(campaignId, tenantId, fullCampaign || campaign, brandConfig, personaConfigs, assetAnalysis);
+    const prompt = buildCampaignPrompt(campaignId, tenantId, fullCampaign || campaign, brandConfig, personaConfigs, assetContext);
 
     await plannerAgent.invoke(prompt);
 

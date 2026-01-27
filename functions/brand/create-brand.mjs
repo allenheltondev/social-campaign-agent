@@ -15,6 +15,23 @@ export const handler = async (event) => {
 
     const requestData = validateRequestBody(CreateBrandRequestSchema, event.body);
 
+    if (requestData.assets && requestData.assets.length > 0) {
+      const now = new Date().toISOString();
+      const userId = event.requestContext.authorizer.userId || tenantId;
+
+      requestData.assets = requestData.assets.map(asset => ({
+        ...asset,
+        addedAt: asset.addedAt || now,
+        addedBy: asset.addedBy || userId
+      }));
+
+      const validation = await Brand.validateAssetAssociations(tenantId, requestData.assets);
+      if (!validation.valid) {
+        const errorMessage = validation.errors.map(e => `${e.field}: ${e.message}`).join(', ');
+        throw new BrandError(`Asset validation failed: ${errorMessage}`, BrandErrorCodes.VALIDATION_ERROR, 400);
+      }
+    }
+
     const defaultConfig = Brand.getDefaultBrandConfiguration();
 
     const brand = {

@@ -25,10 +25,28 @@ export const AssetSchema = z.object({
   uploadStatus: z.enum(['pending', 'completed', 'failed']),
   uploadUrl: z.string().nullable(),
   ttl: z.number().nullable(),
+  approvalStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
+  approvalHistory: z.array(z.object({
+    status: z.enum(['pending', 'approved', 'rejected']),
+    reviewedBy: z.string(),
+    reviewedAt: z.string(),
+    feedback: z.string().nullable()
+  })).default([]),
+  brandAssociations: z.array(z.object({
+    brandId: z.string(),
+    brandName: z.string(),
+    associatedAt: z.string(),
+    isDefault: z.boolean(),
+    category: z.string().nullable()
+  })).nullable().default(null),
   usageStats: z.object({
     totalCampaigns: z.number().int().min(0).default(0),
     totalPosts: z.number().int().min(0).default(0),
-    lastUsedAt: z.string().nullable()
+    lastUsedAt: z.string().nullable(),
+    brandUsage: z.record(z.object({
+      campaignCount: z.number().int().min(0).default(0),
+      postCount: z.number().int().min(0).default(0)
+    })).nullable().default(null)
   }),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -42,7 +60,7 @@ export const ExternalAssetSchema = z.object({
   }),
   description: z.string().min(10).max(500),
   contentType: z.enum(SUPPORTED_CONTENT_TYPES),
-  addedAt: z.string()
+  addedAt: z.string().optional()
 });
 
 export const CreateAssetRequestSchema = z.object({
@@ -226,11 +244,15 @@ export class Asset {
         fileExtension,
         uploadStatus: 'pending',
         uploadUrl: null,
-        ttl: Math.floor(Date.now() / 1000) + (60 * 60), // 1 hour TTL for pending uploads
+        ttl: Math.floor(Date.now() / 1000) + (60 * 60),
+        approvalStatus: 'pending',
+        approvalHistory: [],
+        brandAssociations: null,
         usageStats: {
           totalCampaigns: 0,
           totalPosts: 0,
-          lastUsedAt: null
+          lastUsedAt: null,
+          brandUsage: null
         },
         createdAt: now,
         updatedAt: now,
@@ -264,6 +286,11 @@ export class Asset {
 
   static async update(tenantId, assetId, updateData) {
     try {
+      const existingAsset = await this.findById(tenantId, assetId);
+      if (!existingAsset) {
+        return null;
+      }
+
       const validatedUpdateData = this.validateUpdateData(updateData);
       const now = new Date().toISOString();
 
@@ -282,6 +309,22 @@ export class Asset {
         expressionAttributeNames[attrName] = key;
         expressionAttributeValues[attrValue] = validatedUpdateData[key];
       });
+
+      if (existingAsset.approvalStatus === 'approved') {
+        updateExpression.push('#approvalStatus = :pending');
+        expressionAttributeNames['#approvalStatus'] = 'approvalStatus';
+        expressionAttributeValues[':pending'] = 'pending';
+
+        const resetEntry = {
+          status: 'pending',
+          reviewedBy: 'system',
+          reviewedAt: now,
+          feedback: 'Reset to pending due to asset modification'
+        };
+        updateExpression.push('#approvalHistory = list_append(#approvalHistory, :resetEntry)');
+        expressionAttributeNames['#approvalHistory'] = 'approvalHistory';
+        expressionAttributeValues[':resetEntry'] = [resetEntry];
+      }
 
       const response = await ddb.send(new UpdateItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -484,6 +527,165 @@ export class Asset {
         errorMessage: error.message
       });
       throw new Error('Failed to update asset usage statistics');
+    }
+  }
+
+  static async updateApprovalStatus(tenantId, assetId, status, reviewedBy, feedback = null) {
+    try {
+      const now = new Date().toISOString();
+
+      const approvalEntry = {
+        status,
+        reviewedBy,
+        reviewedAt: now,
+        feedback
+      };
+
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${assetId}`,
+          sk: 'asset'
+        }),
+        UpdateExpression: 'SET #approvalStatus = :status, #approvalHistory = list_append(if_not_exists(#approvalHistory, :emptyList), :newEntry), #updatedAt = :now',
+        ExpressionAttributeNames: {
+          '#approvalStatus': 'approvalStatus',
+          '#approvalHistory': 'approvalHistory',
+          '#updatedAt': 'updatedAt'
+        },
+        ExpressionAttributeValues: marshall({
+          ':status': status,
+          ':newEntry': [approvalEntry],
+          ':emptyList': [],
+          ':now': now
+        }),
+        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
+      }));
+
+      return { success: true, approvalEntry };
+    } catch (error) {
+      assetLogger.error('Asset approval status update failed', {
+        operation: 'updateApprovalStatus',
+        tenantId,
+        assetId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to update asset approval status');
+    }
+  }
+
+  static async addBrandAssociation(tenantId, assetId, brandId, brandName, isDefault = false, category = null) {
+    try {
+      const now = new Date().toISOString();
+
+      const association = {
+        brandId,
+        brandName,
+        associatedAt: now,
+        isDefault,
+        category
+      };
+
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${assetId}`,
+          sk: 'asset'
+        }),
+        UpdateExpression: 'SET #brandAssociations = list_append(if_not_exists(#brandAssociations, :emptyList), :newAssociation), #updatedAt = :now',
+        ExpressionAttributeNames: {
+          '#brandAssociations': 'brandAssociations',
+          '#updatedAt': 'updatedAt'
+        },
+        ExpressionAttributeValues: marshall({
+          ':newAssociation': [association],
+          ':emptyList': [],
+          ':now': now
+        }),
+        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
+      }));
+
+      return { success: true, association };
+    } catch (error) {
+      assetLogger.error('Brand association addition failed', {
+        operation: 'addBrandAssociation',
+        tenantId,
+        assetId,
+        brandId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to add brand association');
+    }
+  }
+
+  static async updateBrandUsageStats(tenantId, assetId, brandId, campaignId = null, postId = null) {
+    try {
+      const asset = await this.findById(tenantId, assetId);
+      if (!asset) {
+        throw new Error('Asset not found');
+      }
+
+      const now = new Date().toISOString();
+      const currentBrandUsage = asset.usageStats?.brandUsage || {};
+      const brandStats = currentBrandUsage[brandId] || { campaignCount: 0, postCount: 0 };
+
+      if (campaignId) {
+        brandStats.campaignCount += 1;
+      }
+      if (postId) {
+        brandStats.postCount += 1;
+      }
+
+      currentBrandUsage[brandId] = brandStats;
+
+      const updateExpression = ['#brandUsage = :brandUsage', '#lastUsedAt = :now'];
+      const expressionAttributeNames = {
+        '#brandUsage': 'usageStats.brandUsage',
+        '#lastUsedAt': 'usageStats.lastUsedAt'
+      };
+      const expressionAttributeValues = {
+        ':brandUsage': currentBrandUsage,
+        ':now': now
+      };
+
+      if (campaignId) {
+        updateExpression.push('#totalCampaigns = #totalCampaigns + :one');
+        expressionAttributeNames['#totalCampaigns'] = 'usageStats.totalCampaigns';
+        expressionAttributeValues[':one'] = 1;
+      }
+
+      if (postId) {
+        updateExpression.push('#totalPosts = #totalPosts + :one');
+        expressionAttributeNames['#totalPosts'] = 'usageStats.totalPosts';
+        if (!expressionAttributeValues[':one']) {
+          expressionAttributeValues[':one'] = 1;
+        }
+      }
+
+      await ddb.send(new UpdateItemCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: marshall({
+          pk: `${tenantId}#${assetId}`,
+          sk: 'asset'
+        }),
+        UpdateExpression: `SET ${updateExpression.join(', ')}`,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: marshall(expressionAttributeValues)
+      }));
+
+      return { success: true };
+    } catch (error) {
+      assetLogger.error('Brand usage stats update failed', {
+        operation: 'updateBrandUsageStats',
+        tenantId,
+        assetId,
+        brandId,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+      throw new Error('Failed to update brand usage statistics');
     }
   }
 }

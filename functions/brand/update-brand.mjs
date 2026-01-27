@@ -24,6 +24,25 @@ export const handler = async (event) => {
       throw new BrandError('No valid fields to update', BrandErrorCodes.VALIDATION_ERROR, 400);
     }
 
+    if (updates.assets !== undefined) {
+      if (updates.assets && updates.assets.length > 0) {
+        const now = new Date().toISOString();
+        const userId = event.requestContext.authorizer.userId || tenantId;
+
+        updates.assets = updates.assets.map(asset => ({
+          ...asset,
+          addedAt: asset.addedAt || now,
+          addedBy: asset.addedBy || userId
+        }));
+
+        const validation = await Brand.validateAssetAssociations(tenantId, updates.assets);
+        if (!validation.valid) {
+          const errorMessage = validation.errors.map(e => `${e.field}: ${e.message}`).join(', ');
+          throw new BrandError(`Asset validation failed: ${errorMessage}`, BrandErrorCodes.VALIDATION_ERROR, 400);
+        }
+      }
+    }
+
     const updatedBrand = await Brand.update(tenantId, brandId, updates);
 
     if (!updatedBrand) {
