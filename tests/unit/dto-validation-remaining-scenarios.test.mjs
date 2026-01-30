@@ -138,7 +138,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Brand._transformFromDynamoDB(rawBrandItem);
+                  result = Brand.fromDynamoDB(rawBrandItem);
                 } catch (error) {
                   // Empty strings should cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -182,7 +182,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Persona.transformFromDynamoDB(rawPersonaItem);
+                  result = Persona.fromDynamoDB(rawPersonaItem);
                 } catch (error) {
                   // Empty strings should cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -232,7 +232,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Campaign._transformFromDynamoDB(rawCampaignItem);
+                  result = Campaign.fromDynamoDB(rawCampaignItem);
                 } catch (error) {
                   // Empty strings should cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -260,7 +260,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = SocialPost._transformFromDynamoDB(rawPostItem);
+                  result = SocialPost.fromDynamoDB(rawPostItem);
                 } catch (error) {
                   // Empty strings should cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -334,7 +334,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Brand._transformFromDynamoDB(rawBrandItem);
+                  result = Brand.fromDynamoDB(rawBrandItem);
                 } catch (error) {
                   // Large strings might cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -378,7 +378,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Persona.transformFromDynamoDB(rawPersonaItem);
+                  result = Persona.fromDynamoDB(rawPersonaItem);
                 } catch (error) {
                   // Large strings might cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -428,7 +428,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = Campaign._transformFromDynamoDB(rawCampaignItem);
+                  result = Campaign.fromDynamoDB(rawCampaignItem);
                 } catch (error) {
                   // Large strings might cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -456,7 +456,7 @@ describe('DTO Validation Remaining Scenarios', () => {
                 };
 
                 try {
-                  result = SocialPost._transformFromDynamoDB(rawPostItem);
+                  result = SocialPost.fromDynamoDB(rawPostItem);
                 } catch (error) {
                   // Large strings might cause validation errors
                   expect(error.name).toBe('ZodError');
@@ -966,3 +966,5 @@ describe('DTO Validation Remaining Scenarios', () => {
     });
   });
 });
+
+

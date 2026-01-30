@@ -16,7 +16,7 @@ vi.mock('../../models/asset.mjs', () => ({
 }));
 
 vi.mock('../../utils/logger.mjs', () => ({
-  brandLogger: {
+  logger: {
     error: vi.fn()
   }
 }));

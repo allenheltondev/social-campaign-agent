@@ -2,7 +2,7 @@ import { DynamoDBClient, GetItemCommand, PutItemCommand, QueryCommand, UpdateIte
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import { campaignLogger } from '../utils/logger.mjs';
+import { logger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -95,51 +95,7 @@ export const generatePostId = () => {
 };
 
 export class SocialPost {
-  static validateEntity(post) {
-    try {
-      return SocialPostSchema.parse(post);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `SocialPost validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
 
-  static validateUpdateData(updateData) {
-    try {
-      const updateSchema = SocialPostSchema.omit({
-        id: true,
-        campaignId: true,
-        createdAt: true,
-        updatedAt: true
-      }).partial();
-      return updateSchema.parse(updateData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `SocialPost update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
   static async findById(tenantId, campaignId, postId) {
     try {
       const response = await ddb.send(new GetItemCommand({
@@ -155,9 +111,9 @@ export class SocialPost {
       }
 
       const rawPost = unmarshall(response.Item);
-      return this._transformFromDynamoDB(rawPost);
+      return this.fromDynamoDB(rawPost);
     } catch (error) {
-      campaignLogger.error('SocialPost findById failed', {
+      logger.error('SocialPost findById failed', {
         operation: 'findById',
         tenantId,
         postId,
@@ -169,7 +125,7 @@ export class SocialPost {
     }
   }
 
-  static async findByCampaign(tenantId, campaignId, limit = 50, nextToken = null, platform = null) {
+  static async findByCampaign(tenantId, campaignId, limit = 50, nextToken = null) {
     try {
       let exclusiveStartKey;
       if (nextToken) {
@@ -186,7 +142,7 @@ export class SocialPost {
         KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
         ExpressionAttributeValues: marshall({
           ':pk': `${tenantId}#${campaignId}`,
-          ':sk': platform ? `POST#${platform}#` : 'POST#'
+          ':sk': 'POST#'
         }),
         Limit: limit,
         ScanIndexForward: true,
@@ -197,7 +153,7 @@ export class SocialPost {
 
       const posts = response.Items?.map(item => {
         const rawPost = unmarshall(item);
-        return this._transformFromDynamoDB(rawPost);
+        return this.fromDynamoDB(rawPost);
       }) || [];
 
       const responseNextToken = response.LastEvaluatedKey
@@ -213,11 +169,10 @@ export class SocialPost {
         }
       };
     } catch (error) {
-      campaignLogger.error('SocialPost findByCampaign failed', {
+      logger.error('SocialPost findByCampaign failed', {
         operation: 'findByCampaign',
         tenantId,
         campaignId,
-        platform,
         errorName: error.name,
         errorMessage: error.message
       });
@@ -225,7 +180,7 @@ export class SocialPost {
     }
   }
 
-  static _transformFromDynamoDB(rawPost) {
+  static fromDynamoDB(rawPost) {
     const cleanPost = { ...rawPost };
 
     delete cleanPost.pk;
@@ -262,7 +217,7 @@ export class SocialPost {
     return SocialPostSchema.parse(cleanPost);
   }
 
-  static _transformToDynamoDB(tenantId, campaignId, post) {
+  static toDynamoDB(tenantId, campaignId, post) {
     const postId = post.id || post.postId || generatePostId();
     const internalPost = {
       ...post,
@@ -294,17 +249,17 @@ export class SocialPost {
         updatedAt: now
       };
 
-      const validatedPost = this.validateEntity(postWithDefaults);
-      const dynamoItem = this._transformToDynamoDB(tenantId, campaignId, validatedPost);
+      const validatedPost = SocialPostSchema.parse(postWithDefaults);
+      const dynamoItem = this.toDynamoDB(tenantId, campaignId, validatedPost);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
         Item: marshall(dynamoItem)
       }));
 
-      return this._transformFromDynamoDB(dynamoItem);
+      return this.fromDynamoDB(dynamoItem);
     } catch (error) {
-      campaignLogger.error('SocialPost save failed', {
+      logger.error('SocialPost save failed', {
         operation: 'save',
         tenantId,
         postId: post.id || post.postId,
@@ -321,7 +276,12 @@ export class SocialPost {
 
   static async update(tenantId, campaignId, postId, updateData) {
     try {
-      const validatedUpdateData = this.validateUpdateData(updateData);
+      const validatedUpdateData = SocialPostSchema.omit({
+        id: true,
+        campaignId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial().parse(updateData);
       const now = new Date().toISOString();
       const updateExpressions = [];
       const expressionAttributeNames = {};
@@ -351,7 +311,7 @@ export class SocialPost {
 
       return await this.findById(tenantId, campaignId, postId);
     } catch (error) {
-      campaignLogger.error('SocialPost update failed', {
+      logger.error('SocialPost update failed', {
         operation: 'update',
         tenantId,
         postId,
@@ -381,7 +341,7 @@ export class SocialPost {
         post: updatedPost
       };
     } catch (error) {
-      campaignLogger.error('SocialPost updateStatus failed', {
+      logger.error('SocialPost updateStatus failed', {
         operation: 'updateStatus',
         tenantId,
         postId,
@@ -410,7 +370,7 @@ export class SocialPost {
         post: updatedPost
       };
     } catch (error) {
-      campaignLogger.error('SocialPost updateContent failed', {
+      logger.error('SocialPost updateContent failed', {
         operation: 'updateContent',
         tenantId,
         postId,
@@ -423,7 +383,7 @@ export class SocialPost {
   }
 
   static async batchUpdateSchedules(tenantId, schedules) {
-    campaignLogger.info('Starting batch schedule update', {
+    logger.info('Starting batch schedule update', {
       operation: 'batchUpdateSchedules',
       tenantId,
       totalSchedules: schedules.length
@@ -458,7 +418,7 @@ export class SocialPost {
               campaignId,
               message: error.message
             });
-            campaignLogger.error('Failed to update post schedule', {
+            logger.error('Failed to update post schedule', {
               operation: 'batchUpdateSchedules',
               tenantId,
               postId,
@@ -473,7 +433,7 @@ export class SocialPost {
             campaignId: 'unknown',
             message: result.reason?.message || 'Unknown error'
           });
-          campaignLogger.error('Failed to update post schedule', {
+          logger.error('Failed to update post schedule', {
             operation: 'batchUpdateSchedules',
             tenantId,
             errorMessage: result.reason?.message || 'Unknown error'
@@ -482,7 +442,7 @@ export class SocialPost {
       });
     }
 
-    campaignLogger.info('Completed batch schedule update', {
+    logger.info('Completed batch schedule update', {
       operation: 'batchUpdateSchedules',
       tenantId,
       totalSchedules: schedules.length,
@@ -526,7 +486,7 @@ export class SocialPost {
             updatedAt: now
           };
 
-          const dynamoItem = this._transformToDynamoDB(tenantId, campaignId, postItem);
+          const dynamoItem = this.toDynamoDB(tenantId, campaignId, postItem);
 
           writeRequests.push({
             PutRequest: {
@@ -534,7 +494,7 @@ export class SocialPost {
             }
           });
 
-          createdPosts.push(this._transformFromDynamoDB(dynamoItem));
+          createdPosts.push(this.fromDynamoDB(dynamoItem));
         }
 
         if (writeRequests.length > 0) {
@@ -552,7 +512,7 @@ export class SocialPost {
         posts: createdPosts
       };
     } catch (err) {
-      campaignLogger.error('Failed to create social posts', {
+      logger.error('Failed to create social posts', {
         operation: 'createPostsForCampaign',
         tenantId,
         campaignId,
@@ -570,3 +530,4 @@ export class SocialPost {
     }
   }
 }
+

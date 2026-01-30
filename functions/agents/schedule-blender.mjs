@@ -2,7 +2,7 @@ import { Agent, BedrockModel, tool } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { Campaign } from '../../models/campaign.mjs';
 import { SocialPost } from '../../models/social-post.mjs';
-import { agentLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const model = new BedrockModel({
   ...process.env.MODEL_ID && { modelId: process.env.MODEL_ID },
@@ -32,7 +32,7 @@ export const updateSchedulesTool = tool({
 
       return { schedules, success: true };
     } catch (error) {
-      agentLogger.error('Failed to update schedules', {
+      logger.error('Failed to update schedules', {
         operation: 'updateSchedules',
         errorName: error.name,
         errorMessage: error.message
@@ -87,17 +87,17 @@ You MUST use the update_schedules tool to save your optimized schedule.`,
 });
 
 async function fetchAllActivePosts(tenantId) {
-  const campaigns = await Campaign.list(tenantId, {
-    status: ['approved', 'pending_approval']
-  });
+  const campaigns = await Campaign.list(tenantId);
 
   const allPosts = [];
   for (const campaign of campaigns.items) {
-    const { items: posts } = await SocialPost.findByCampaign(
-      tenantId,
-      campaign.id
-    );
-    allPosts.push(...posts);
+    if (campaign.status === 'completed' || campaign.status === 'generating') {
+      const { items: posts } = await SocialPost.findByCampaign(
+        tenantId,
+        campaign.id
+      );
+      allPosts.push(...posts);
+    }
   }
 
   return allPosts;
@@ -166,7 +166,7 @@ export const run = async (tenantId, { campaignId }) => {
 
     return { success: true, schedules };
   } catch (error) {
-    agentLogger.error('Schedule blending failed', {
+    logger.error('Schedule blending failed', {
       operation: 'schedule-blending',
       campaignId,
       tenantId,

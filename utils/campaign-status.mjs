@@ -1,5 +1,5 @@
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
-import { utilLogger } from './logger.mjs';
+import { logger } from './logger.mjs';
 
 const eventBridge = new EventBridgeClient();
 
@@ -8,14 +8,12 @@ export const CAMPAIGN_STATUSES = {
   GENERATING: 'generating',
   COMPLETED: 'completed',
   FAILED: 'failed',
-  CANCELLED: 'cancelled',
-  AWAITING_REVIEW: 'awaiting_review'
+  CANCELLED: 'cancelled'
 };
 
 export const STATUS_TRANSITIONS = {
   [CAMPAIGN_STATUSES.PLANNING]: [CAMPAIGN_STATUSES.GENERATING, CAMPAIGN_STATUSES.CANCELLED],
-  [CAMPAIGN_STATUSES.GENERATING]: [CAMPAIGN_STATUSES.COMPLETED, CAMPAIGN_STATUSES.AWAITING_REVIEW, CAMPAIGN_STATUSES.FAILED, CAMPAIGN_STATUSES.CANCELLED],
-  [CAMPAIGN_STATUSES.AWAITING_REVIEW]: [CAMPAIGN_STATUSES.COMPLETED, CAMPAIGN_STATUSES.CANCELLED],
+  [CAMPAIGN_STATUSES.GENERATING]: [CAMPAIGN_STATUSES.COMPLETED, CAMPAIGN_STATUSES.FAILED, CAMPAIGN_STATUSES.CANCELLED],
   [CAMPAIGN_STATUSES.COMPLETED]: [],
   [CAMPAIGN_STATUSES.FAILED]: [],
   [CAMPAIGN_STATUSES.CANCELLED]: []
@@ -37,12 +35,11 @@ export function getNextStatusFromPosts(posts, currentStatus) {
   const completedPosts = posts.filter(p => p.status === 'completed').length;
   const failedPosts = posts.filter(p => p.status === 'failed').length;
   const skippedPosts = posts.filter(p => p.status === 'skipped').length;
-  const needsReviewPosts = posts.filter(p => p.status === 'needs_review').length;
 
-  const finishedPosts = completedPosts + failedPosts + skippedPosts + needsReviewPosts;
+  const finishedPosts = completedPosts + failedPosts + skippedPosts;
 
   if (finishedPosts >= totalPosts) {
-    return needsReviewPosts > 0 ? CAMPAIGN_STATUSES.AWAITING_REVIEW : CAMPAIGN_STATUSES.COMPLETED;
+    return CAMPAIGN_STATUSES.COMPLETED;
   }
 
   return currentStatus;
@@ -74,7 +71,7 @@ export async function publishStatusTransition(campaignId, tenantId, fromStatus, 
 
     return { success: true };
   } catch (err) {
-    utilLogger.error('Failed to publish status transition event', {
+    logger.error('Failed to publish status transition event', {
       operation: 'publishStatusTransition',
       campaignId,
       tenantId,
@@ -133,7 +130,6 @@ export function getUpdatePermissions(status) {
     case CAMPAIGN_STATUSES.COMPLETED:
     case CAMPAIGN_STATUSES.FAILED:
     case CAMPAIGN_STATUSES.CANCELLED:
-    case CAMPAIGN_STATUSES.AWAITING_REVIEW:
       return {
         name: true,
         metadata: true,

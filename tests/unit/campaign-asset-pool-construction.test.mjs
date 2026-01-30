@@ -6,8 +6,7 @@ import { Asset } from '../../models/asset.mjs';
 
 vi.mock('@aws-sdk/client-dynamodb');
 vi.mock('../../utils/logger.mjs', () => ({
-  brandLogger: { error: vi.fn() },
-  assetLogger: { error: vi.fn() }
+  logger: { error: vi.fn() }
 }));
 
 describe('Feature: brand-asset-ux-integration, Property 2: Campaign Asset Pool Construction', () => {

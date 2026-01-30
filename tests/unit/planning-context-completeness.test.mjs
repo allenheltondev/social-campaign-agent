@@ -4,13 +4,7 @@ import { buildBrandGuidelinesSection, buildPersonaVoiceSection, buildAssetSectio
 
 vi.mock('@aws-sdk/client-dynamodb');
 vi.mock('../../utils/logger.mjs', () => ({
-  agentLogger: {
-    error: vi.fn()
-  },
-  brandLogger: {
-    error: vi.fn()
-  },
-  campaignLogger: {
+  logger: {
     error: vi.fn()
   }
 }));

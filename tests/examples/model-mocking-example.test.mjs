@@ -119,26 +119,4 @@ describe('Model Mocking Example', () => {
     expect(allMocks.Brand.findById.mock.calls.length).toBe(0);
     expect(allMocks.Persona.findById.mock.calls.length).toBe(0);
   });
-
-  it('should demonstrate validation mocking', () => {
-    const testData = { name: 'Test Brand', status: 'active' };
-
-    mockBrand.validateEntity.mockReturnValue({ id: 'brand-123', ...testData });
-    mockBrand.validateUpdateData.mockReturnValue(testData);
-
-    const validatedEntity = mockBrand.validateEntity(testData);
-    const validatedUpdate = mockBrand.validateUpdateData(testData);
-
-    expect(validatedEntity.id).toBe('brand-123');
-    expect(validatedEntity.name).toBe('Test Brand');
-    expect(validatedUpdate).toEqual(testData);
-
-    const validationError = new Error('Validation failed');
-    validationError.name = 'ValidationError';
-    mockBrand.validateEntity.mockImplementation(() => {
-      throw validationError;
-    });
-
-    expect(() => mockBrand.validateEntity({})).toThrow('Validation failed');
-  });
 });

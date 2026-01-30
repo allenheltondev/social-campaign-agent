@@ -1,7 +1,7 @@
 import { SocialPost } from '../../models/social-post.mjs';
 import { formatResponse } from '../../utils/api-response.mjs';
 import { z } from 'zod';
-import { campaignLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const updatePostStatusSchema = z.object({
   status: z.enum(['planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review']),
@@ -84,7 +84,7 @@ export const handler = async (event) => {
       });
     }
 
-    campaignLogger.error('Update post status operation failed', {
+    logger.error('Update post status operation failed', {
       operation: 'update-post-status',
       tenantId: event.requestContext?.authorizer?.tenantId,
       campaignId: event.pathParameters?.campaignId,

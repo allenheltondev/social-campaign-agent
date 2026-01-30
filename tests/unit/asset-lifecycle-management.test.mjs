@@ -39,33 +39,28 @@ describe('Asset Lifecycle Management Property Tests', () => {
 
   const listOptionsArb = fc.record({
     limit: fc.integer({ min: 1, max: 100 }),
-    nextToken: fc.option(fc.string()),
-    contentType: fc.option(validContentTypeArb),
-    createdAfter: fc.option(fc.date().map(d => d.toISOString()))
+    nextToken: fc.option(fc.string())
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should provide paginated asset listing with filtering capabilities', () => {
+  it('should provide paginated asset listing', () => {
     fc.assert(fc.property(
       tenantIdArb,
       listOptionsArb,
       (tenantId, options) => {
-        // Verify tenant ID is valid
         expect(tenantId.trim().length).toBeGreaterThan(0);
 
-        // Verify options structure is valid
         expect(options.limit).toBeGreaterThan(0);
         expect(options.limit).toBeLessThanOrEqual(100);
 
-        // Mock asset list result structure
         const mockResult = {
           items: Array.from({ length: Math.min(options.limit, 5) }, (_, i) => ({
             assetId: `asset_${i}`,
             type: 'internal',
-            contentType: options.contentType || 'image/jpeg',
+            contentType: 'image/jpeg',
             description: 'Test asset description for property testing',
             fileSize: 1024 * 1024,
             objectKey: `${tenantId}/assets/asset_${i}.jpg`,
@@ -87,14 +82,12 @@ describe('Asset Lifecycle Management Property Tests', () => {
           }
         };
 
-        // Verify pagination structure (Requirement 6.1)
         expect(mockResult).toHaveProperty('items');
         expect(mockResult).toHaveProperty('pagination');
         expect(mockResult.pagination).toHaveProperty('limit');
         expect(mockResult.pagination).toHaveProperty('hasNextPage');
         expect(mockResult.pagination).toHaveProperty('nextToken');
 
-        // Verify all assets include usage statistics (Requirement 6.5)
         mockResult.items.forEach(asset => {
           expect(asset).toHaveProperty('usageStats');
           expect(asset.usageStats).toHaveProperty('totalCampaigns');
@@ -104,14 +97,6 @@ describe('Asset Lifecycle Management Property Tests', () => {
           expect(typeof asset.usageStats.totalPosts).toBe('number');
         });
 
-        // Verify filtering is applied when specified (Requirement 6.1)
-        if (options.contentType) {
-          mockResult.items.forEach(asset => {
-            expect(asset.contentType).toBe(options.contentType);
-          });
-        }
-
-        // Verify limit is respected
         expect(mockResult.items.length).toBeLessThanOrEqual(options.limit);
 
         return true;
@@ -270,72 +255,6 @@ describe('Asset Lifecycle Management Property Tests', () => {
           expect(completeAsset.usageStats.lastUsedAt).not.toBeNull();
         }
 
-        return true;
-      }
-    ), { numRuns: 100 });
-  });
-
-  it('should support efficient filtering by content type and creation date', () => {
-    fc.assert(fc.asyncProperty(
-      tenantIdArb,
-      validContentTypeArb,
-      fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }),
-      async (tenantId, contentType, createdAfter) => {
-        const createdAfterISO = createdAfter.toISOString();
-
-        // Mock filtered assets
-        const mockFilteredAssets = Array.from({ length: 3 }, (_, i) => ({
-          assetId: `asset_${i}`,
-          tenantId,
-          type: 'internal',
-          contentType,
-          description: 'Filtered test asset description',
-          fileSize: 1024 * 1024,
-          objectKey: `${tenantId}/assets/asset_${i}.jpg`,
-          fileExtension: 'jpg',
-          uploadStatus: 'completed',
-          uploadUrl: null,
-          ttl: null,
-          usageStats: {
-            totalCampaigns: 0,
-            totalPosts: 0,
-            lastUsedAt: null
-          },
-          createdAt: new Date(createdAfter.getTime() + (i + 1) * 60000).toISOString(), // After the filter date
-          updatedAt: new Date().toISOString(),
-          version: 1
-        }));
-
-        // Mock Asset.list with filtering
-        const mockList = vi.spyOn(Asset, 'list').mockResolvedValue({
-          items: mockFilteredAssets,
-          pagination: {
-            limit: 20,
-            hasNextPage: false,
-            nextToken: null
-          }
-        });
-
-        const result = await Asset.list(tenantId, {
-          contentType,
-          createdAfter: createdAfterISO,
-          limit: 20
-        });
-
-        // Verify filtering works correctly (Requirement 6.1)
-        result.items.forEach(asset => {
-          expect(asset.contentType).toBe(contentType);
-          expect(new Date(asset.createdAt).getTime()).toBeGreaterThan(createdAfter.getTime());
-        });
-
-        // Verify efficient query patterns are used (GSI access)
-        expect(mockList).toHaveBeenCalledWith(tenantId, {
-          contentType,
-          createdAfter: createdAfterISO,
-          limit: 20
-        });
-
-        mockList.mockRestore();
         return true;
       }
     ), { numRuns: 100 });

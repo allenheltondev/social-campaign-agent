@@ -1,7 +1,7 @@
 import { S3Client, GetObjectAttributesCommand } from '@aws-sdk/client-s3';
 import { Asset } from '../../models/asset.mjs';
 import { logAssetOperation } from '../../utils/asset-security.mjs';
-import { assetLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const s3Client = new S3Client();
 
@@ -44,10 +44,14 @@ export const handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ message: 'Upload completion processed successfully' })
     };
   } catch (error) {
-    assetLogger.error('Asset upload completion processing failed', {
+    logger.error('Asset upload completion processing failed', {
       operation: 'upload-complete',
       tenantId: 'unknown',
       errorName: error.name,
@@ -61,6 +65,10 @@ export const handler = async (event) => {
 
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ message: 'Failed to process upload completion' })
     };
   }

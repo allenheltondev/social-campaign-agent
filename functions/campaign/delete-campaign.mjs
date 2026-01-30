@@ -1,6 +1,5 @@
 import { Campaign } from '../../models/campaign.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { campaignLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -8,20 +7,41 @@ export const handler = async (event) => {
     const { campaignId } = event.pathParameters;
 
     if (!tenantId || !campaignId) {
-      return formatResponse(400, { message: 'Missing required parameters' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required parameters' })
+      };
     }
 
     const campaign = await Campaign.findById(tenantId, campaignId);
 
     if (!campaign) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
     if (campaign.status === 'generating') {
-      return formatResponse(409, {
-        message: 'Cannot delete campaign while content generation is in progress',
-        currentStatus: campaign.status
-      });
+      return {
+        statusCode: 409,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: 'Cannot delete campaign while content generation is in progress',
+          currentStatus: campaign.status
+        })
+      };
     }
 
     const updateData = {
@@ -32,13 +52,26 @@ export const handler = async (event) => {
     const updatedCampaign = await Campaign.update(tenantId, campaignId, updateData);
 
     if (!updatedCampaign) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
-    return formatResponse(204, null);
+    return {
+      statusCode: 204,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    };
 
   } catch (err) {
-    campaignLogger.error('Delete campaign operation failed', {
+    logger.error('Delete campaign operation failed', {
       operation: 'delete-campaign',
       tenantId: event.requestContext?.authorizer?.tenantId,
       campaignId: event.pathParameters?.campaignId,
@@ -47,9 +80,23 @@ export const handler = async (event) => {
     });
 
     if (err.name === 'ConditionalCheckFailedException') {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
-    return formatResponse(500, { message: 'Something went wrong' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Something went wrong' })
+    };
   }
 };

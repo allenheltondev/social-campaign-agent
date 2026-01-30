@@ -2,7 +2,7 @@ import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, Quer
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import { assetLogger } from '../utils/logger.mjs';
+import { logger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -62,28 +62,6 @@ export const ExternalAssetSchema = z.object({
   contentType: z.enum(SUPPORTED_CONTENT_TYPES),
   addedAt: z.string().optional()
 });
-
-export const CreateAssetRequestSchema = z.object({
-  contentType: z.enum(SUPPORTED_CONTENT_TYPES),
-  description: z.string().min(10).max(500),
-  fileSize: z.number().int().min(1)
-}).refine(data => {
-  if (SUPPORTED_IMAGE_TYPES.includes(data.contentType)) {
-    return data.fileSize <= MAX_IMAGE_SIZE;
-  }
-  if (SUPPORTED_VIDEO_TYPES.includes(data.contentType)) {
-    return data.fileSize <= MAX_VIDEO_SIZE;
-  }
-  return false;
-}, {
-  message: 'File size exceeds limits: 10MB for images, 100MB for videos'
-});
-
-export const UpdateAssetRequestSchema = z.object({
-  description: z.string().min(10).max(500)
-});
-
-export const AssetDTOSchema = AssetSchema.omit({ tenantId: true });
 
 export const validateRequestBody = (schema, body) => {
   try {
@@ -160,45 +138,6 @@ export const getFileExtension = (contentType) => {
 };
 
 export class Asset {
-  static validateEntity(asset) {
-    try {
-      return AssetSchema.parse(asset);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Asset validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
-
-  static validateUpdateData(updateData) {
-    try {
-      return UpdateAssetRequestSchema.parse(updateData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Asset update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
 
   static async findById(tenantId, assetId) {
     try {
@@ -215,9 +154,9 @@ export class Asset {
       }
 
       const rawAsset = unmarshall(response.Item);
-      return this._transformFromDynamoDB(rawAsset);
+      return this.fromDynamoDB(rawAsset);
     } catch (error) {
-      assetLogger.error('Asset retrieval failed', {
+      logger.error('Asset retrieval failed', {
         operation: 'findById',
         tenantId,
         assetId,
@@ -259,8 +198,8 @@ export class Asset {
         version: 1
       };
 
-      const validatedAsset = this.validateEntity(assetWithDefaults);
-      const dynamoItem = this._transformToDynamoDB(tenantId, validatedAsset);
+      const validatedAsset = AssetSchema.parse(assetWithDefaults);
+      const dynamoItem = this.toDynamoDB(tenantId, validatedAsset);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -268,9 +207,9 @@ export class Asset {
         ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
       }));
 
-      return this._transformFromDynamoDB(dynamoItem);
+      return this.fromDynamoDB(dynamoItem);
     } catch (error) {
-      assetLogger.error('Asset save failed', {
+      logger.error('Asset save failed', {
         operation: 'save',
         tenantId,
         assetId: asset.assetId,
@@ -291,7 +230,9 @@ export class Asset {
         return null;
       }
 
-      const validatedUpdateData = this.validateUpdateData(updateData);
+      const validatedUpdateData = z.object({
+        description: z.string().min(10).max(500)
+      }).parse(updateData);
       const now = new Date().toISOString();
 
       const updateExpression = [];
@@ -342,9 +283,9 @@ export class Asset {
         return null;
       }
 
-      return this._transformFromDynamoDB(unmarshall(response.Attributes));
+      return this.fromDynamoDB(unmarshall(response.Attributes));
     } catch (error) {
-      assetLogger.error('Asset update failed', {
+      logger.error('Asset update failed', {
         operation: 'update',
         tenantId,
         assetId,
@@ -360,7 +301,7 @@ export class Asset {
 
   static async list(tenantId, options = {}) {
     try {
-      const { nextToken, contentType, createdAfter } = options;
+      const { nextToken, limit = 20 } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -375,30 +316,23 @@ export class Asset {
         TableName: process.env.TABLE_NAME,
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :assetPrefix)',
-        FilterExpression: contentType ? '#contentType = :contentType' : undefined,
-        ExpressionAttributeNames: contentType ? { '#contentType': 'contentType' } : undefined,
         ExpressionAttributeValues: marshall({
           ':tenantId': tenantId,
-          ':assetPrefix': 'ASSET#',
-          ...(contentType && { ':contentType': contentType })
+          ':assetPrefix': 'ASSET#'
         }),
-        Limit: options.limit || 20,
+        Limit: limit,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));
 
-      let assets = response.Items?.map(item => {
+      const assets = response.Items?.map(item => {
         const rawAsset = unmarshall(item);
-        return this._transformFromDynamoDB(rawAsset);
+        return this.fromDynamoDB(rawAsset);
       }) || [];
-
-      if (createdAfter) {
-        assets = assets.filter(asset => asset.createdAt > createdAfter);
-      }
 
       const assetListResponse = {
         items: assets,
         pagination: {
-          limit: options.limit || 20,
+          limit,
           hasNextPage: !!response.LastEvaluatedKey,
           nextToken: response.LastEvaluatedKey
             ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
@@ -408,7 +342,7 @@ export class Asset {
 
       return assetListResponse;
     } catch (error) {
-      assetLogger.error('Asset list failed', {
+      logger.error('Asset list failed', {
         operation: 'list',
         tenantId,
         errorName: error.name,
@@ -418,7 +352,7 @@ export class Asset {
     }
   }
 
-  static _transformFromDynamoDB(rawAsset) {
+  static fromDynamoDB(rawAsset) {
     const cleanAsset = { ...rawAsset };
 
     delete cleanAsset.pk;
@@ -433,7 +367,7 @@ export class Asset {
     return cleanAsset;
   }
 
-  static _transformToDynamoDB(tenantId, asset) {
+  static toDynamoDB(tenantId, asset) {
     const now = new Date().toISOString();
 
     return {
@@ -474,7 +408,7 @@ export class Asset {
 
       return { success: true };
     } catch (error) {
-      assetLogger.error('Asset upload completion failed', {
+      logger.error('Asset upload completion failed', {
         operation: 'markUploadCompleted',
         tenantId,
         assetId,
@@ -519,7 +453,7 @@ export class Asset {
 
       return { success: true };
     } catch (error) {
-      assetLogger.error('Asset usage stats update failed', {
+      logger.error('Asset usage stats update failed', {
         operation: 'updateUsageStats',
         tenantId,
         assetId,
@@ -564,7 +498,7 @@ export class Asset {
 
       return { success: true, approvalEntry };
     } catch (error) {
-      assetLogger.error('Asset approval status update failed', {
+      logger.error('Asset approval status update failed', {
         operation: 'updateApprovalStatus',
         tenantId,
         assetId,
@@ -608,7 +542,7 @@ export class Asset {
 
       return { success: true, association };
     } catch (error) {
-      assetLogger.error('Brand association addition failed', {
+      logger.error('Brand association addition failed', {
         operation: 'addBrandAssociation',
         tenantId,
         assetId,
@@ -677,7 +611,7 @@ export class Asset {
 
       return { success: true };
     } catch (error) {
-      assetLogger.error('Brand usage stats update failed', {
+      logger.error('Brand usage stats update failed', {
         operation: 'updateBrandUsageStats',
         tenantId,
         assetId,
@@ -689,3 +623,4 @@ export class Asset {
     }
   }
 }
+

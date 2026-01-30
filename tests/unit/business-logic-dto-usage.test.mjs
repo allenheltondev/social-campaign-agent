@@ -42,7 +42,7 @@ describe('Business Logic DTO Usage', () => {
           campaignId: fc.string({ minLength: 1, maxLength: 50 }),
           name: fc.string({ minLength: 1, maxLength: 100 }),
           brief: fc.string({ minLength: 10, maxLength: 500 }),
-          status: fc.constantFrom('planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review')
+          status: fc.constantFrom('planning', 'generating', 'completed', 'failed', 'cancelled')
         }),
         async (testData) => {
           const now = new Date().toISOString();

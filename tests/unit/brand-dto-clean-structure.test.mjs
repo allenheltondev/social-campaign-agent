@@ -133,7 +133,7 @@ describe('Brand DTO Clean Structure', () => {
             updatedAt: new Date().toISOString()
           };
 
-          const result = Brand._transformFromDynamoDB(rawDynamoItem);
+          const result = Brand.fromDynamoDB(rawDynamoItem);
 
           expect(result.id).toBe(testData.brandId);
 
@@ -155,3 +155,4 @@ describe('Brand DTO Clean Structure', () => {
     );
   });
 });
+

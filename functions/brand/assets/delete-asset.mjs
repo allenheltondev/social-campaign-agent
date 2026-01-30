@@ -1,26 +1,36 @@
 import { DynamoDBClient, DeleteItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
-import { brandLogger } from '../../../utils/logger.mjs';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const s3Client = new S3Client();
 
 export const handler = async (event) => {
-  const operation = 'delete-asset';
-
   try {
     const { tenantId } = event.requestContext.authorizer;
     const { brandId, assetId } = event.pathParameters;
 
     if (!tenantId) {
-      throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!brandId || !assetId) {
-      throw new BrandError('Missing brandId or assetId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing brandId or assetId parameter' })
+      };
     }
 
     const assetResponse = await ddb.send(new GetItemCommand({
@@ -32,7 +42,14 @@ export const handler = async (event) => {
     }));
 
     if (!assetResponse.Item) {
-      throw new BrandError('Asset not found', BrandErrorCodes.ASSET_NOT_FOUND, 404);
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Asset not found' })
+      };
     }
 
     const asset = unmarshall(assetResponse.Item);
@@ -43,7 +60,7 @@ export const handler = async (event) => {
         Key: asset.s3Key
       }));
     } catch (s3Error) {
-      brandLogger.error('S3 cleanup failed but continuing with DynamoDB deletion', {
+      logger.error('S3 cleanup failed but continuing with DynamoDB deletion', {
         operation: 'delete-asset-s3-cleanup',
         s3Bucket: asset.s3Bucket,
         s3Key: asset.s3Key,
@@ -61,12 +78,22 @@ export const handler = async (event) => {
       ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
     }));
 
-    return formatResponse(204);
+    return {
+      statusCode: 204,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    };
   } catch (error) {
-    return createStandardizedError(error, operation, {
-      tenantId: event.requestContext?.authorizer?.tenantId,
-      brandId: event.pathParameters?.brandId,
-      assetId: event.pathParameters?.assetId
-    });
+    console.error(error);
+    return {
+      statusCode: error.statusCode || 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: error.message || 'Internal server error' })
+    };
   }
 };

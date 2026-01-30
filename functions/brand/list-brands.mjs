@@ -1,23 +1,25 @@
 import { Brand } from '../../models/brand.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
-  const operation = 'list-brands';
-
   try {
     const { tenantId } = event.requestContext.authorizer;
-    const { search, nextToken, status } = event.queryStringParameters || {};
+    const { nextToken } = event.queryStringParameters || {};
 
     if (!tenantId) {
-      throw new BrandError('Tenant ID is required', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Tenant ID is required' })
+      };
     }
 
     const brandListResponse = await Brand.list(tenantId, {
-      search,
       limit: parseInt(event.queryStringParameters?.limit || '20'),
-      nextToken,
-      status
+      nextToken
     });
 
     const response = {
@@ -25,11 +27,29 @@ export const handler = async (event) => {
       ...brandListResponse.pagination
     };
 
-    return formatResponse(200, response);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(response)
+    };
 
   } catch (error) {
-    return createStandardizedError(error, operation, {
-      tenantId: event.requestContext?.authorizer?.tenantId
+    logger.error('List brands operation failed', {
+      operation: 'listBrands',
+      tenantId: event.requestContext?.authorizer?.tenantId,
+      errorName: error.name,
+      errorMessage: error.message
     });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

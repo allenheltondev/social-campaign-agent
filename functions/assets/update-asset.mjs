@@ -1,11 +1,10 @@
-import { Asset, UpdateAssetRequestSchema, validateRequestBody } from '../../models/asset.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
+import { Asset, AssetSchema } from '../../models/asset.mjs';
 import {
   validateAssetAccess,
   logAssetOperation,
   AssetSecurityError
 } from '../../utils/asset-security.mjs';
-import { assetLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -13,11 +12,25 @@ export const handler = async (event) => {
     const { assetId } = event.pathParameters;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized: Missing tenant context' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized: Missing tenant context' })
+      };
     }
 
     if (!assetId) {
-      return formatResponse(400, { message: 'Asset ID is required' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Asset ID is required' })
+      };
     }
 
     // Enhanced security validation with tenant ownership verification
@@ -25,31 +38,57 @@ export const handler = async (event) => {
       await validateAssetAccess(tenantId, assetId, 'UPDATE');
     } catch (error) {
       if (error instanceof AssetSecurityError) {
-        return formatResponse(403, {
-          message: error.message,
-          violationType: error.violationType
-        });
+        return {
+          statusCode: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            message: error.message,
+            violationType: error.violationType
+          })
+        };
       }
       throw error;
     }
 
-    const updateData = validateRequestBody(UpdateAssetRequestSchema, event.body);
+    const requestSchema = AssetSchema.pick({
+      description: true
+    }).partial();
+
+    const body = JSON.parse(event.body);
+    const updateData = requestSchema.parse(body);
 
     const updatedAsset = await Asset.update(tenantId, assetId, updateData);
 
     if (!updatedAsset) {
       logAssetOperation(tenantId, assetId, 'UPDATE', 'NOT_FOUND');
-      return formatResponse(404, { message: 'Asset not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Asset not found' })
+      };
     }
 
     logAssetOperation(tenantId, assetId, 'UPDATE', 'SUCCESS', {
       updatedFields: Object.keys(updateData)
     });
 
-    return formatResponse(200, { asset: updatedAsset });
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ asset: updatedAsset })
+    };
 
   } catch (error) {
-    assetLogger.error('Asset update operation failed', {
+    logger.error('Asset update operation failed', {
       operation: 'updateAsset',
       tenantId: event.requestContext?.authorizer?.tenantId,
       assetId: event.pathParameters?.assetId,
@@ -66,19 +105,40 @@ export const handler = async (event) => {
     );
 
     if (error.name === 'ValidationError') {
-      return formatResponse(400, {
-        message: error.message,
-        details: error.details
-      });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: error.message,
+          details: error.details
+        })
+      };
     }
 
     if (error instanceof AssetSecurityError) {
-      return formatResponse(403, {
-        message: error.message,
-        violationType: error.violationType
-      });
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: error.message,
+          violationType: error.violationType
+        })
+      };
     }
 
-    return formatResponse(500, { message: 'Failed to update asset' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Failed to update asset' })
+    };
   }
 };

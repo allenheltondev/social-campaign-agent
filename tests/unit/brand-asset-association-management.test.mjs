@@ -4,7 +4,7 @@ import { Brand, BrandAssetAssociationSchema } from '../../models/brand.mjs';
 
 vi.mock('@aws-sdk/client-dynamodb');
 vi.mock('../../utils/logger.mjs', () => ({
-  brandLogger: {
+  logger: {
     error: vi.fn()
   }
 }));

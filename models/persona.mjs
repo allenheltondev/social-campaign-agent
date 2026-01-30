@@ -2,7 +2,7 @@ import { DynamoDBClient, GetItemCommand, BatchGetItemCommand, PutItemCommand, Qu
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import { personaLogger } from '../utils/logger.mjs';
+import { logger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -87,51 +87,6 @@ export const WritingExampleSchema = z.object({
   createdAt: z.string()
 });
 
-export const CreatePersonaRequestSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  role: z.string().trim().min(1).max(100),
-  company: z.string().trim().min(1).max(100),
-  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
-  voiceTraits: z.array(z.string().trim()).min(1).max(10).optional(),
-  writingHabits: z.object({
-    paragraphs: z.enum(['short', 'medium', 'long']),
-    questions: z.enum(['frequent', 'occasional', 'rare']),
-    emojis: z.enum(['frequent', 'sparing', 'none']),
-    structure: z.enum(['prose', 'lists', 'mixed'])
-  }).optional(),
-  opinions: z.object({
-    strongBeliefs: z.array(z.string().trim()).min(1).max(3),
-    avoidsTopics: z.array(z.string().trim()).max(10)
-  }).optional(),
-  language: z.object({
-    avoid: z.array(z.string().trim()).max(20),
-    prefer: z.array(z.string().trim()).max(20)
-  }).optional(),
-  ctaStyle: z.object({
-    aggressiveness: z.enum(['low', 'medium', 'high']),
-    patterns: z.array(z.string().trim()).max(10)
-  }).optional()
-});
-
-export const UpdatePersonaRequestSchema = CreatePersonaRequestSchema.partial();
-
-export const CreateWritingExampleRequestSchema = WritingExampleSchema.omit({
-  exampleId: true,
-  personaId: true,
-  tenantId: true,
-  analyzedAt: true,
-  createdAt: true
-});
-
-export const QueryPersonasRequestSchema = z.object({
-  limit: z.coerce.number().min(1).max(100).optional(),
-  nextToken: z.string().optional(),
-  search: z.string().trim().max(200).optional(),
-  company: z.string().trim().max(100).optional(),
-  role: z.string().trim().max(100).optional(),
-  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']).optional()
-});
-
 export const validateRequestBody = (schema, body) => {
   try {
     const parsed = JSON.parse(body);
@@ -184,51 +139,7 @@ export const generateExampleId = () => {
 };
 
 export class Persona {
-  static validateEntity(persona) {
-    try {
-      return PersonaSchema.parse(persona);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Persona validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
 
-  static validateUpdateData(updateData) {
-    try {
-      const updateSchema = PersonaSchema.omit({
-        personaId: true,
-        tenantId: true,
-        createdAt: true,
-        updatedAt: true
-      }).partial();
-      return updateSchema.parse(updateData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Persona update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
   static async findById(tenantId, personaId) {
     try {
       const response = await ddb.send(new GetItemCommand({
@@ -249,9 +160,9 @@ export class Persona {
         return null;
       }
 
-      return this.transformFromDynamoDB(rawPersona);
+      return this.fromDynamoDB(rawPersona);
     } catch (error) {
-      personaLogger.error('Persona retrieval failed', {
+      logger.error('Persona retrieval failed', {
         operation: 'findById',
         tenantId,
         personaId,
@@ -276,8 +187,8 @@ export class Persona {
         isActive: true
       };
 
-      const validatedPersona = this.validateEntity(personaWithDefaults);
-      const dynamoItem = this._transformToDynamoDB(tenantId, validatedPersona);
+      const validatedPersona = PersonaSchema.parse(personaWithDefaults);
+      const dynamoItem = this.toDynamoDB(tenantId, validatedPersona);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -285,9 +196,9 @@ export class Persona {
         ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
       }));
 
-      return this.transformFromDynamoDB(validatedPersona);
+      return this.fromDynamoDB(validatedPersona);
     } catch (error) {
-      personaLogger.error('Persona save failed', {
+      logger.error('Persona save failed', {
         operation: 'save',
         tenantId,
         personaId: persona.id,
@@ -303,7 +214,13 @@ export class Persona {
 
   static async update(tenantId, personaId, updateData) {
     try {
-      const validatedUpdateData = this.validateUpdateData(updateData);
+      const updateSchema = PersonaSchema.omit({
+        personaId: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial();
+      const validatedUpdateData = updateSchema.parse(updateData);
       const existing = await this.findById(tenantId, personaId);
       if (!existing) {
         return null;
@@ -322,17 +239,17 @@ export class Persona {
         tenantId
       };
 
-      const validatedPersona = this.validateEntity(personaForValidation);
-      const dynamoItem = this._transformToDynamoDB(tenantId, validatedPersona);
+      const validatedPersona = PersonaSchema.parse(personaForValidation);
+      const dynamoItem = this.toDynamoDB(tenantId, validatedPersona);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
         Item: marshall(dynamoItem)
       }));
 
-      return this.transformFromDynamoDB(validatedPersona);
+      return this.fromDynamoDB(validatedPersona);
     } catch (error) {
-      personaLogger.error('Persona update failed', {
+      logger.error('Persona update failed', {
         operation: 'update',
         tenantId,
         personaId,
@@ -375,7 +292,7 @@ export class Persona {
 
       return true;
     } catch (error) {
-      personaLogger.error('Persona delete failed', {
+      logger.error('Persona delete failed', {
         operation: 'delete',
         tenantId,
         personaId,
@@ -391,7 +308,7 @@ export class Persona {
 
   static async list(tenantId, options = {}) {
     try {
-      const { nextToken, search, company, role, primaryAudience } = options;
+      const { nextToken, limit = 20 } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -415,48 +332,19 @@ export class Persona {
           ':personaPrefix': 'PERSONA#',
           ':true': true
         }),
-        Limit: options.limit || 20,
+        Limit: limit,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));
 
-      let personas = response.Items?.map(item => {
+      const personas = response.Items?.map(item => {
         const rawPersona = unmarshall(item);
-        return this.transformFromDynamoDB(rawPersona);
+        return this.fromDynamoDB(rawPersona);
       }) || [];
-
-      // Apply client-side filtering
-      if (search) {
-        const searchTerm = search.toLowerCase();
-        personas = personas.filter(persona =>
-          persona.name.toLowerCase().includes(searchTerm) ||
-          persona.role.toLowerCase().includes(searchTerm) ||
-          persona.company.toLowerCase().includes(searchTerm) ||
-          persona.primaryAudience.toLowerCase().includes(searchTerm)
-        );
-      }
-
-      if (company) {
-        personas = personas.filter(persona =>
-          persona.company.toLowerCase().includes(company.toLowerCase())
-        );
-      }
-
-      if (role) {
-        personas = personas.filter(persona =>
-          persona.role.toLowerCase().includes(role.toLowerCase())
-        );
-      }
-
-      if (primaryAudience) {
-        personas = personas.filter(persona =>
-          persona.primaryAudience === primaryAudience
-        );
-      }
 
       const personaListResponse = {
         items: personas,
         pagination: {
-          limit: options.limit || 20,
+          limit,
           hasNextPage: !!response.LastEvaluatedKey,
           nextToken: response.LastEvaluatedKey
             ? Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64')
@@ -466,7 +354,7 @@ export class Persona {
 
       return personaListResponse;
     } catch (error) {
-      personaLogger.error('Persona list failed', {
+      logger.error('Persona list failed', {
         operation: 'list',
         tenantId,
         errorName: error.name,
@@ -501,7 +389,7 @@ export class Persona {
 
       const batchPersonas = response.Responses[process.env.TABLE_NAME]?.map(item => {
         const rawPersona = unmarshall(item);
-        return this.transformFromDynamoDB(rawPersona);
+        return this.fromDynamoDB(rawPersona);
       }) || [];
 
       personas.push(...batchPersonas);
@@ -518,7 +406,7 @@ export class Persona {
     return personas;
   }
 
-  static transformFromDynamoDB(rawPersona) {
+  static fromDynamoDB(rawPersona) {
     const cleanPersona = { ...rawPersona };
 
     delete cleanPersona.pk;
@@ -535,7 +423,7 @@ export class Persona {
     return cleanPersona;
   }
 
-  static _transformToDynamoDB(tenantId, persona) {
+  static toDynamoDB(tenantId, persona) {
     const now = new Date().toISOString();
 
     const internalPersona = { ...persona };
@@ -545,7 +433,6 @@ export class Persona {
       delete internalPersona.id;
     }
 
-    // Add tenant context back
     internalPersona.tenantId = tenantId;
 
     return {
@@ -556,51 +443,5 @@ export class Persona {
       ...internalPersona
     };
   }
-
-  static enrichForCampaign(persona) {
-    return {
-      personaId: persona.id,
-      name: persona.name,
-      role: persona.role,
-      company: persona.company,
-      primaryAudience: persona.primaryAudience,
-      voiceTraits: persona.voiceTraits,
-      writingHabits: persona.writingHabits,
-      opinions: persona.opinions,
-      language: persona.language,
-      ctaStyle: persona.ctaStyle,
-      inferredStyle: persona.inferredStyle,
-      hardRestrictions: {
-        avoidsTopics: persona.opinions?.avoidsTopics || [],
-        languageAvoid: persona.language?.avoid || [],
-        ctaLimitations: persona.ctaStyle?.aggressiveness === 'low'
-      },
-      platformPreferences: {
-        twitter: { maxLength: 280, preferHashtags: true },
-        linkedin: { maxLength: 3000, preferProfessional: true },
-        instagram: { maxLength: 2200, requireVisuals: true },
-        facebook: { maxLength: 63206, allowLongForm: true }
-      }
-    };
-  }
-
-  static mergeEffectiveRestrictions(persona, campaignRestrictions = {}, brandRestrictions = {}) {
-    const enrichedPersona = this.enrichForCampaign(persona);
-
-    return {
-      ...enrichedPersona,
-      effectiveRestrictions: {
-        avoidsTopics: [
-          ...(enrichedPersona.hardRestrictions?.avoidsTopics || []),
-          ...(campaignRestrictions.campaignAvoidTopics || []),
-          ...(brandRestrictions.avoidTopics || [])
-        ],
-        languageAvoid: [
-          ...(enrichedPersona.hardRestrictions?.languageAvoid || []),
-          ...(brandRestrictions.avoidPhrases || [])
-        ],
-        ctaLimitations: enrichedPersona.hardRestrictions?.ctaLimitations || false
-      }
-    };
-  }
 }
+

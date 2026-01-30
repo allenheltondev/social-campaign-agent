@@ -78,7 +78,7 @@ describe('DTO Validation Edge Cases', () => {
                 pillars: null
               };
 
-              result = Brand._transformFromDynamoDB(rawBrandItem);
+              result = Brand.fromDynamoDB(rawBrandItem);
               break;
             }
 
@@ -122,7 +122,7 @@ describe('DTO Validation Edge Cases', () => {
                 lastAnalysisAt: null
               };
 
-              result = Persona.transformFromDynamoDB(rawPersonaItem);
+              result = Persona.fromDynamoDB(rawPersonaItem);
               break;
             }
 
@@ -170,7 +170,7 @@ describe('DTO Validation Edge Cases', () => {
                 lastError: undefined
               };
 
-              result = Campaign._transformFromDynamoDB(rawCampaignItem);
+              result = Campaign.fromDynamoDB(rawCampaignItem);
               break;
             }
 
@@ -198,7 +198,7 @@ describe('DTO Validation Edge Cases', () => {
                 assetRequirements: undefined
               };
 
-              result = SocialPost._transformFromDynamoDB(rawPostItem);
+              result = SocialPost.fromDynamoDB(rawPostItem);
               break;
             }
           }
@@ -554,7 +554,7 @@ describe('DTO Validation Edge Cases', () => {
                 }
               };
 
-              result = Brand._transformFromDynamoDB(rawBrandItem);
+              result = Brand.fromDynamoDB(rawBrandItem);
               break;
             }
 
@@ -593,7 +593,7 @@ describe('DTO Validation Edge Cases', () => {
                 updatedAt: now
               };
 
-              result = Persona.transformFromDynamoDB(rawPersonaItem);
+              result = Persona.fromDynamoDB(rawPersonaItem);
               break;
             }
 
@@ -638,7 +638,7 @@ describe('DTO Validation Edge Cases', () => {
                 completedAt: null
               };
 
-              result = Campaign._transformFromDynamoDB(rawCampaignItem);
+              result = Campaign.fromDynamoDB(rawCampaignItem);
               break;
             }
 
@@ -661,7 +661,7 @@ describe('DTO Validation Edge Cases', () => {
                 updatedAt: now
               };
 
-              result = SocialPost._transformFromDynamoDB(rawPostItem);
+              result = SocialPost.fromDynamoDB(rawPostItem);
               break;
             }
           }
@@ -954,3 +954,5 @@ describe('DTO Validation Edge Cases', () => {
     );
   });
 });
+
+

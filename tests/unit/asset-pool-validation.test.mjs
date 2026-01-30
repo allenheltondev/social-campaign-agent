@@ -5,8 +5,7 @@ import { Asset } from '../../models/asset.mjs';
 
 vi.mock('@aws-sdk/client-dynamodb');
 vi.mock('../../utils/logger.mjs', () => ({
-  brandLogger: { error: vi.fn() },
-  assetLogger: { error: vi.fn() }
+  logger: { error: vi.fn() }
 }));
 
 describe('Asset Pool Validation', () => {

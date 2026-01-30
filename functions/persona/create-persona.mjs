@@ -1,17 +1,36 @@
-import { Persona, CreatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { personaLogger } from '../../utils/logger.mjs';
-import { getPersonaDefaults } from '../../utils/persona-defaults.mjs';
+import { Persona, PersonaSchema } from '../../models/persona.mjs';
+import { logger } from '../../utils/logger.mjs';
+import { getPersonaDefaults } from '../../utils/defaults.mjs';
 
 export const handler = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
-    const requestData = validateRequestBody(CreatePersonaRequestSchema, event.body);
+    const createSchema = PersonaSchema.pick({
+      name: true,
+      role: true,
+      company: true,
+      primaryAudience: true
+    }).extend({
+      voiceTraits: PersonaSchema.shape.voiceTraits.optional(),
+      writingHabits: PersonaSchema.shape.writingHabits.optional(),
+      opinions: PersonaSchema.shape.opinions.optional(),
+      language: PersonaSchema.shape.language.optional(),
+      ctaStyle: PersonaSchema.shape.ctaStyle.optional()
+    });
+
+    const requestData = createSchema.parse(JSON.parse(event.body));
 
     const defaults = getPersonaDefaults(requestData.primaryAudience);
 
@@ -27,9 +46,16 @@ export const handler = async (event) => {
 
     const persona = await Persona.save(tenantId, personaWithDefaults);
 
-    return formatResponse(201, { id: persona.id });
+    return {
+      statusCode: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ id: persona.id })
+    };
   } catch (error) {
-    personaLogger.error('Create persona failed', {
+    logger.error('Create persona failed', {
       operation: 'create-persona',
       tenantId: event.requestContext?.authorizer?.tenantId,
       errorName: error.name,
@@ -37,9 +63,23 @@ export const handler = async (event) => {
     });
 
     if (error.message.includes('Validation error')) {
-      return formatResponse(400, { message: error.message });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: error.message })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

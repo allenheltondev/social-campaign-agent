@@ -1,7 +1,6 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { personaLogger } from '../../../utils/logger.mjs';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -11,21 +10,41 @@ export const handler = async (event) => {
     const { personaId, exampleId } = event.pathParameters;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!personaId) {
-      return formatResponse(400, { message: 'Missing personaId parameter' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing personaId parameter' })
+      };
     }
 
     if (!exampleId) {
-      return formatResponse(400, { message: 'Missing exampleId parameter' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing exampleId parameter' })
+      };
     }
 
-    // Soft delete by removing content and adding deletedAt timestamp with 7-day TTL
     const now = new Date();
-    const ttlDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days from now
-    const ttlTimestamp = Math.floor(ttlDate.getTime() / 1000); // Convert to Unix timestamp
+    const ttlDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+    const ttlTimestamp = Math.floor(ttlDate.getTime() / 1000);
 
     await ddb.send(new UpdateItemCommand({
       TableName: process.env.TABLE_NAME,
@@ -49,9 +68,16 @@ export const handler = async (event) => {
       ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)'
     }));
 
-    return formatResponse(204);
+    return {
+      statusCode: 204,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: ''
+    };
   } catch (error) {
-    personaLogger.error('Delete example failed', {
+    logger.error('Delete example failed', {
       operation: 'delete-example',
       tenantId: event.requestContext?.authorizer?.tenantId,
       personaId: event.pathParameters?.personaId,
@@ -61,9 +87,23 @@ export const handler = async (event) => {
     });
 
     if (error.name === 'ConditionalCheckFailedException') {
-      return formatResponse(404, { message: 'Writing example not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Writing example not found' })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

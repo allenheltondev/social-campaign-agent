@@ -1,7 +1,6 @@
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { personaLogger } from '../../../utils/logger.mjs';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -10,24 +9,45 @@ export const handler = async (event) => {
     const {detail} = event;
 
     if (!detail) {
-      return formatResponse(400, { message: 'Missing required fields in event detail' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required fields in event detail' })
+      };
     }
 
     const { tenantId, personaId, requestId, styleData, success } = detail;
 
     if (!tenantId || !personaId || !requestId) {
-      personaLogger.error('Missing required fields in event detail', {
+      logger.error('Missing required fields in event detail', {
         operation: 'style-analysis-complete',
         detail,
         errorName: 'ValidationError',
         errorMessage: 'Missing required fields in event detail'
       });
-      return formatResponse(400, { message: 'Missing required fields in event detail' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required fields in event detail' })
+      };
     }
 
     if (success) {
       if (!styleData || !styleData.sentenceLengthPattern || !styleData.structurePreference) {
-        return formatResponse(400, { message: 'Invalid style data structure' });
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ message: 'Invalid style data structure' })
+        };
       }
 
       const updateParams = {
@@ -48,10 +68,17 @@ export const handler = async (event) => {
 
       await ddb.send(new UpdateItemCommand(updateParams));
 
-      return formatResponse(200, {
-        message: `Style analysis completed successfully for persona ${personaId}`,
-        requestId
-      });
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: `Style analysis completed successfully for persona ${personaId}`,
+          requestId
+        })
+      };
     } else {
       const updateParams = {
         TableName: process.env.TABLE_NAME,
@@ -77,17 +104,31 @@ export const handler = async (event) => {
         response.error = detail.error;
       }
 
-      return formatResponse(200, response);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify(response)
+      };
     }
 
   } catch (error) {
-    personaLogger.error('Style analysis complete failed', {
+    logger.error('Style analysis complete failed', {
       operation: 'style-analysis-complete',
       personaId: event.detail?.personaId,
       tenantId: event.detail?.tenantId,
       errorName: error.name,
       errorMessage: error.message
     });
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

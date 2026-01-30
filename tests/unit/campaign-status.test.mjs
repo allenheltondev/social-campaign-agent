@@ -15,8 +15,7 @@ describe('Campaign Status Management', () => {
       expect(isValidStatusTransition('planning', 'generating')).toBe(true);
       expect(isValidStatusTransition('generating', 'completed')).toBe(true);
       expect(isValidStatusTransition('generating', 'failed')).toBe(true);
-      expect(isValidStatusTransition('generating', 'awaiting_review')).toBe(true);
-      expect(isValidStatusTransition('awaiting_review', 'completed')).toBe(true);
+      expect(isValidStatusTransition('generating', 'cancelled')).toBe(true);
     });
 
     it('should reject invalid status transitions', () => {
@@ -41,15 +40,6 @@ describe('Campaign Status Management', () => {
         { status: 'failed' }
       ];
       expect(getNextStatusFromPosts(posts, 'generating')).toBe('completed');
-    });
-
-    it('should return awaiting_review when posts need review', () => {
-      const posts = [
-        { status: 'completed' },
-        { status: 'needs_review' },
-        { status: 'completed' }
-      ];
-      expect(getNextStatusFromPosts(posts, 'generating')).toBe('awaiting_review');
     });
 
     it('should return generating when posts are still in progress', () => {

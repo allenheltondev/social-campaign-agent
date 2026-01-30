@@ -41,7 +41,7 @@ describe('SocialPost DTO Return Consistency', () => {
           scheduledAt: fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map(d => d.toISOString()),
           topic: fc.string({ minLength: 1, maxLength: 100 }),
           intent: fc.constantFrom('announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder'),
-          status: fc.constantFrom('planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review')
+          status: fc.constantFrom('planned', 'generating', 'completed', 'failed', 'skipped')
         }),
         async (testData) => {
           const rawDynamoItem = {
@@ -114,7 +114,7 @@ describe('SocialPost DTO Return Consistency', () => {
             scheduledAt: fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map(d => d.toISOString()),
             topic: fc.string({ minLength: 1, maxLength: 100 }),
             intent: fc.constantFrom('announce', 'educate', 'opinion', 'invite_discussion', 'social_proof', 'reminder'),
-            status: fc.constantFrom('planned', 'generating', 'completed', 'failed', 'skipped', 'needs_review')
+            status: fc.constantFrom('planned', 'generating', 'completed', 'failed', 'skipped')
           }),
           { minLength: 0, maxLength: 5 }
         ),

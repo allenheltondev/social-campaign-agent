@@ -1,11 +1,10 @@
 import { Campaign } from '../../models/campaign.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
 import {
   validateStatusTransition,
   publishStatusTransition,
   getUpdatePermissions as getStatusUpdatePermissions
 } from '../../utils/campaign-status.mjs';
-import { campaignLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -14,34 +13,62 @@ export const handler = async (event) => {
     const updateData = JSON.parse(event.body);
 
     if (!tenantId || !campaignId) {
-      return formatResponse(400, { message: 'Missing required parameters' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required parameters' })
+      };
     }
 
     const existingCampaign = await Campaign.findById(tenantId, campaignId);
 
     if (!existingCampaign) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
     const updatePermissions = getStatusUpdatePermissions(existingCampaign.status);
     const filteredUpdateData = filterUpdateData(updateData, updatePermissions);
 
     if (Object.keys(filteredUpdateData).length === 0) {
-      return formatResponse(409, {
-        message: `Cannot update campaign in ${existingCampaign.status} status`,
-        currentStatus: existingCampaign.status
-      });
+      return {
+        statusCode: 409,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: `Cannot update campaign in ${existingCampaign.status} status`,
+          currentStatus: existingCampaign.status
+        })
+      };
     }
 
     if (filteredUpdateData.status && filteredUpdateData.status !== existingCampaign.status) {
       try {
         validateStatusTransition(existingCampaign.status, filteredUpdateData.status, existingCampaign);
       } catch (statusError) {
-        return formatResponse(400, {
-          message: statusError.message,
-          currentStatus: existingCampaign.status,
-          requestedStatus: filteredUpdateData.status
-        });
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            message: statusError.message,
+            currentStatus: existingCampaign.status,
+            requestedStatus: filteredUpdateData.status
+          })
+        };
       }
     }
 
@@ -56,7 +83,14 @@ export const handler = async (event) => {
     const updatedCampaign = await Campaign.update(tenantId, campaignId, filteredUpdateData);
 
     if (!updatedCampaign) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
     if (filteredUpdateData.status && filteredUpdateData.status !== existingCampaign.status) {
@@ -69,10 +103,17 @@ export const handler = async (event) => {
       );
     }
 
-    return formatResponse(200, updatedCampaign);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(updatedCampaign)
+    };
 
   } catch (err) {
-    campaignLogger.error('Update campaign operation failed', {
+    logger.error('Update campaign operation failed', {
       operation: 'update-campaign',
       tenantId: event.requestContext?.authorizer?.tenantId,
       campaignId: event.pathParameters?.campaignId,
@@ -81,17 +122,38 @@ export const handler = async (event) => {
     });
 
     if (err.name === 'ZodError') {
-      return formatResponse(400, {
-        message: 'Invalid campaign data',
-        details: err.errors
-      });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: 'Invalid campaign data',
+          details: err.errors
+        })
+      };
     }
 
     if (err.name === 'ConditionalCheckFailedException') {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
-    return formatResponse(500, { message: 'Something went wrong' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Something went wrong' })
+    };
   }
 };
 

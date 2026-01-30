@@ -1,20 +1,41 @@
-import { CreateBrandRequestSchema, validateRequestBody, Brand } from '../../models/brand.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
-import { brandLogger } from '../../utils/logger.mjs';
-import { getBrandDefaults } from '../../utils/brand-defaults.mjs';
+import { BrandSchema, Brand } from '../../models/brand.mjs';
+import { logger } from '../../utils/logger.mjs';
+import { getBrandDefaults } from '../../utils/defaults.mjs';
 
 export const handler = async (event) => {
-  const operation = 'create-brand';
-
   try {
     const { tenantId } = event.requestContext.authorizer;
 
     if (!tenantId) {
-      throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
-    const requestData = validateRequestBody(CreateBrandRequestSchema, event.body);
+    const createSchema = BrandSchema.pick({
+      name: true,
+      ethos: true,
+      coreValues: true,
+      primaryAudience: true
+    }).extend({
+      voiceGuidelines: BrandSchema.shape.voiceGuidelines.optional(),
+      visualIdentity: BrandSchema.shape.visualIdentity.optional(),
+      contentStandards: BrandSchema.shape.contentStandards.optional(),
+      platformGuidelines: BrandSchema.shape.platformGuidelines.optional(),
+      audienceProfile: BrandSchema.shape.audienceProfile.optional(),
+      pillars: BrandSchema.shape.pillars.optional(),
+      claimsPolicy: BrandSchema.shape.claimsPolicy.optional(),
+      ctaLibrary: BrandSchema.shape.ctaLibrary.optional(),
+      approvalPolicy: BrandSchema.shape.approvalPolicy.optional(),
+      assets: BrandSchema.shape.assets.optional()
+    });
+
+    const requestData = createSchema.parse(JSON.parse(event.body));
 
     const defaults = getBrandDefaults(requestData.primaryAudience);
 
@@ -31,7 +52,14 @@ export const handler = async (event) => {
       const validation = await Brand.validateAssetAssociations(tenantId, requestData.assets);
       if (!validation.valid) {
         const errorMessage = validation.errors.map(e => `${e.field}: ${e.message}`).join(', ');
-        throw new BrandError(`Asset validation failed: ${errorMessage}`, BrandErrorCodes.VALIDATION_ERROR, 400);
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ message: `Asset validation failed: ${errorMessage}` })
+        };
       }
     }
 
@@ -52,16 +80,40 @@ export const handler = async (event) => {
 
     const savedBrand = await Brand.save(tenantId, brand);
 
-    return formatResponse(201, savedBrand);
+    return {
+      statusCode: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(savedBrand)
+    };
   } catch (error) {
-    brandLogger.error('Create brand failed', {
+    logger.error('Create brand failed', {
       operation: 'create-brand',
       tenantId: event.requestContext?.authorizer?.tenantId,
       errorName: error.name,
       errorMessage: error.message
     });
-    return createStandardizedError(error, operation, {
-      tenantId: event.requestContext?.authorizer?.tenantId
-    });
+
+    if (error.message.includes('Validation error')) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: error.message })
+      };
+    }
+
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

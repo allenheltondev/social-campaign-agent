@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getPersonaDefaults } from '../../utils/persona-defaults.mjs';
+import { getPersonaDefaults } from '../../utils/defaults.mjs';
 import { PersonaSchema } from '../../models/persona.mjs';
 
 describe('Persona Defaults Generation', () => {

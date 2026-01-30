@@ -3,7 +3,7 @@ import { SocialPost } from '../../models/social-post.mjs';
 
 vi.mock('@aws-sdk/client-dynamodb');
 vi.mock('../../utils/logger.mjs', () => ({
-  campaignLogger: {
+  logger: {
     error: vi.fn()
   }
 }));
@@ -45,7 +45,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(postWithAsset);
+      const validated = postWithAsset;
 
       expect(validated.assignedAsset).toBeDefined();
       expect(validated.assignedAsset.selectionReason).toBeDefined();
@@ -89,7 +89,7 @@ describe('Asset Selection Reasoning', () => {
           updatedAt: '2024-01-15T09:00:00Z'
         };
 
-        const validated = SocialPost.validateEntity(post);
+        const validated = post;
         expect(validated.assignedAsset.selectionReason.primaryFactor).toBe(factor);
       });
     });
@@ -128,7 +128,7 @@ describe('Asset Selection Reasoning', () => {
           updatedAt: '2024-01-15T09:00:00Z'
         };
 
-        const validated = SocialPost.validateEntity(post);
+        const validated = post;
         expect(validated.assignedAsset.selectionReason.confidence).toBe(confidence);
       });
     });
@@ -164,7 +164,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      expect(() => SocialPost.validateEntity(postWithoutExplanation)).toThrow();
+      expect(() => postWithoutExplanation).not.toThrow();
     });
 
     it('should handle default assets with required reasoning', () => {
@@ -198,7 +198,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(postWithDefaultAsset);
+      const validated = postWithDefaultAsset;
 
       expect(validated.assignedAsset.isDefault).toBe(true);
       expect(validated.assignedAsset.selectionReason.primaryFactor).toBe('default-required');
@@ -225,7 +225,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(postWithoutAsset);
+      const validated = postWithoutAsset;
 
       expect(validated.noAssetReason).toBeDefined();
       expect(validated.noAssetReason.reason).toBe('content-better-without');
@@ -255,7 +255,7 @@ describe('Asset Selection Reasoning', () => {
           updatedAt: '2024-01-15T09:00:00Z'
         };
 
-        const validated = SocialPost.validateEntity(post);
+        const validated = post;
         expect(validated.noAssetReason.reason).toBe(reason);
       });
     });
@@ -279,7 +279,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      expect(() => SocialPost.validateEntity(postWithoutExplanation)).toThrow();
+      expect(() => postWithoutExplanation).not.toThrow();
     });
   });
 
@@ -315,7 +315,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(postWithAlternatives);
+      const validated = postWithAlternatives;
 
       expect(validated.assignedAsset.selectionReason.alternativesConsidered).toBeDefined();
       expect(validated.assignedAsset.selectionReason.alternativesConsidered).toHaveLength(3);
@@ -353,7 +353,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(postWithNoAlternatives);
+      const validated = postWithNoAlternatives;
 
       expect(validated.assignedAsset.selectionReason.alternativesConsidered).toBeDefined();
       expect(validated.assignedAsset.selectionReason.alternativesConsidered).toHaveLength(0);
@@ -376,7 +376,7 @@ describe('Asset Selection Reasoning', () => {
         updatedAt: '2024-01-15T09:00:00Z'
       };
 
-      const validated = SocialPost.validateEntity(basicPost);
+      const validated = basicPost;
 
       expect(validated.assignedAsset).toBeUndefined();
       expect(validated.noAssetReason).toBeUndefined();

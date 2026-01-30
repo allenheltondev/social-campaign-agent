@@ -2,7 +2,7 @@ import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/clie
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import { brandLogger } from '../utils/logger.mjs';
+import { logger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -147,88 +147,6 @@ export {
   AssetLibraryStatsSchema
 };
 
-export const CreateBrandRequestSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  ethos: z.string().trim().min(1).max(1000),
-  coreValues: z.array(z.string().trim().min(1).max(200)).min(1).max(10),
-  primaryAudience: z.enum(['executives', 'professionals', 'consumers', 'technical', 'creative']),
-  voiceGuidelines: z.object({
-    tone: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
-    style: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
-    messaging: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
-  }).optional(),
-  visualIdentity: z.object({
-    colorPalette: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
-    typography: z.array(z.string().trim().min(1).max(100)).min(1).max(5),
-    imagery: z.array(z.string().trim().min(1).max(100)).min(1).max(10)
-  }).optional(),
-  contentStandards: z.object({
-    qualityRequirements: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
-    restrictions: z.array(z.string().trim().min(1).max(200)).max(20)
-  }).optional(),
-  platformGuidelines: z.object({
-    enabled: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook'])).min(1),
-    defaults: z.record(
-      z.enum(['twitter', 'linkedin', 'instagram', 'facebook']),
-      z.object({
-        defaultAsset: z.enum(['none', 'image', 'video']),
-        linkPolicy: z.enum(['allowed', 'discouraged', 'never']),
-        emojiPolicy: z.enum(['none', 'sparing', 'allowed']),
-        hashtagPolicy: z.enum(['none', 'sparing', 'allowed']),
-        typicalCadencePerWeek: z.number().min(0).max(21)
-      })
-    )
-  }).optional(),
-  audienceProfile: z.object({
-    segments: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional(),
-    excluded: z.array(z.string().trim().min(1).max(100)).max(10).nullable().optional()
-  }).optional(),
-  pillars: z.array(z.object({
-    name: z.string().trim().min(1).max(100),
-    weight: z.number().min(0).max(1).optional()
-  })).max(10).nullable().optional(),
-  claimsPolicy: z.object({
-    noGuarantees: z.boolean(),
-    noPerformanceNumbersUnlessProvided: z.boolean(),
-    requireSourceForStats: z.boolean(),
-    competitorMentionPolicy: z.enum(['avoid', 'neutral_only', 'allowed'])
-  }).optional(),
-  ctaLibrary: z.array(z.object({
-    type: z.string().trim().min(1).max(50),
-    text: z.string().trim().min(1).max(200),
-    defaultUrl: z.url().nullable().optional()
-  })).max(20).nullable().optional(),
-  approvalPolicy: z.object({
-    threshold: z.number().min(0).max(1),
-    mode: z.enum(['auto_approve', 'require_review_below_threshold', 'always_review'])
-  }).optional(),
-  assets: z.array(BrandAssetAssociationSchema).max(50).optional().nullable()
-});
-
-export const UpdateBrandRequestSchema = CreateBrandRequestSchema.partial();
-
-export const CreateBrandAssetRequestSchema = BrandAssetSchema.omit({
-  assetId: true,
-  brandId: true,
-  tenantId: true,
-  s3Bucket: true,
-  s3Key: true,
-  fileSize: true,
-  createdAt: true,
-  updatedAt: true
-}).extend({
-  fileData: z.string().trim().min(1, 'File data is required')
-});
-
-export const QueryBrandsRequestSchema = z.object({
-  limit: z.coerce.number().min(1).max(100).optional(),
-  nextToken: z.string().optional(),
-  search: z.string().trim().max(200).optional(),
-  status: z.enum(['active', 'inactive', 'archived']).optional(),
-  industry: z.string().trim().max(100).optional(),
-  companySize: z.string().trim().max(50).optional()
-});
-
 export const validateRequestBody = (schema, body) => {
   try {
     const parsed = JSON.parse(body);
@@ -281,51 +199,7 @@ export const generateAssetId = () => {
 };
 
 export class Brand {
-  static validateEntity(brand) {
-    try {
-      return BrandSchema.parse(brand);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Brand validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
 
-  static validateUpdateData(updateData) {
-    try {
-      const updateSchema = BrandSchema.omit({
-        brandId: true,
-        tenantId: true,
-        createdAt: true,
-        updatedAt: true
-      }).partial();
-      return updateSchema.parse(updateData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Brand update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
   static async findById(tenantId, brandId) {
     try {
       if (!brandId) {
@@ -350,9 +224,9 @@ export class Brand {
         return null;
       }
 
-      return this._transformFromDynamoDB(rawBrand);
+      return this.fromDynamoDB(rawBrand);
     } catch (error) {
-      brandLogger.error('Brand retrieval failed', {
+      logger.error('Brand retrieval failed', {
         operation: 'findById',
         tenantId,
         brandId,
@@ -382,8 +256,8 @@ export class Brand {
         assetLibraryStats
       };
 
-      const validatedBrand = this.validateEntity(brandWithDefaults);
-      const dynamoItem = this._transformToDynamoDB(tenantId, validatedBrand);
+      const validatedBrand = BrandSchema.parse(brandWithDefaults);
+      const dynamoItem = this.toDynamoDB(tenantId, validatedBrand);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -391,9 +265,9 @@ export class Brand {
         ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
       }));
 
-      return this._transformFromDynamoDB(dynamoItem);
+      return this.fromDynamoDB(dynamoItem);
     } catch (error) {
-      brandLogger.error('Brand save failed', {
+      logger.error('Brand save failed', {
         operation: 'save',
         tenantId,
         brandId: brand.id,
@@ -411,7 +285,13 @@ export class Brand {
     try {
       const { UpdateItemCommand } = await import('@aws-sdk/client-dynamodb');
 
-      const validatedUpdateData = this.validateUpdateData(updateData);
+      const updateSchema = BrandSchema.omit({
+        brandId: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true
+      }).partial();
+      const validatedUpdateData = updateSchema.parse(updateData);
       const now = new Date().toISOString();
 
       if (validatedUpdateData.assets !== undefined) {
@@ -452,9 +332,9 @@ export class Brand {
         return null;
       }
 
-      return this._transformFromDynamoDB(unmarshall(response.Attributes));
+      return this.fromDynamoDB(unmarshall(response.Attributes));
     } catch (error) {
-      brandLogger.error('Brand update failed', {
+      logger.error('Brand update failed', {
         operation: 'update',
         tenantId,
         brandId,
@@ -495,7 +375,7 @@ export class Brand {
 
       return { success: true };
     } catch (error) {
-      brandLogger.error('Brand delete failed', {
+      logger.error('Brand delete failed', {
         operation: 'delete',
         tenantId,
         brandId,
@@ -571,7 +451,7 @@ export class Brand {
     };
   }
 
-  static transformFromDynamoDB(rawBrand) {
+  static fromDynamoDB(rawBrand) {
     const cleanBrand = { ...rawBrand };
 
     delete cleanBrand.pk;
@@ -589,74 +469,25 @@ export class Brand {
     return cleanBrand;
   }
 
-  static _transformFromDynamoDB(rawBrand) {
-    const cleanBrand = { ...rawBrand };
-
-    delete cleanBrand.pk;
-    delete cleanBrand.sk;
-    delete cleanBrand.GSI1PK;
-    delete cleanBrand.GSI1SK;
-    delete cleanBrand.GSI2PK;
-    delete cleanBrand.GSI2SK;
-
-    delete cleanBrand.tenantId;
-
-    cleanBrand.id = cleanBrand.brandId;
-    delete cleanBrand.brandId;
-
-    return cleanBrand;
-  }
-
-  static _transformToDynamoDB(tenantId, brand) {
+  static toDynamoDB(tenantId, brand) {
     const now = new Date().toISOString();
     const brandId = brand.id || brand.brandId;
-    const status = brand.status || 'active';
 
     return {
       pk: `${tenantId}#${brandId}`,
       sk: 'metadata',
       GSI1PK: tenantId,
       GSI1SK: `BRAND#${now}`,
-      GSI2PK: `${tenantId}#${status}`,
-      GSI2SK: `BRAND#${now}`,
       ...brand,
       brandId,
       tenantId
     };
   }
 
-  static transformToDynamoDB(tenantId, brand) {
-    return this._transformToDynamoDB(tenantId, brand);
-  }
-
-  static extractCadenceDefaults(brand) {
-    const platformDefaults = brand?.platformGuidelines?.defaults || {};
-    const averageCadence = Object.values(platformDefaults).reduce((sum, platform) =>
-      sum + (platform.typicalCadencePerWeek || 3), 0) / Math.max(Object.keys(platformDefaults).length, 1) || 3;
-
-    return {
-      averageCadence,
-      minPostsPerWeek: Math.max(1, Math.floor(averageCadence * 0.7)),
-      maxPostsPerWeek: Math.ceil(averageCadence * 1.3),
-      maxPostsPerDay: 2
-    };
-  }
-
-  static extractAssetRequirements(brand) {
-    const platformDefaults = brand?.platformGuidelines?.defaults || {};
-
-    return {
-      twitter: platformDefaults.twitter?.defaultAsset === 'image',
-      linkedin: platformDefaults.linkedin?.defaultAsset === 'image',
-      instagram: platformDefaults.instagram?.defaultAsset !== 'none',
-      facebook: platformDefaults.facebook?.defaultAsset === 'image'
-    };
-  }
-
   static async list(tenantId, options = {}) {
     try {
       const { QueryCommand } = await import('@aws-sdk/client-dynamodb');
-      const { nextToken, search, status, limit = 50 } = options;
+      const { nextToken, limit = 50 } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -671,33 +502,23 @@ export class Brand {
         TableName: process.env.TABLE_NAME,
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :brandPrefix)',
-        FilterExpression: status ? '#status = :status AND #status <> :archived' : '#status <> :archived',
+        FilterExpression: '#status <> :archived',
         ExpressionAttributeNames: {
           '#status': 'status'
         },
         ExpressionAttributeValues: marshall({
           ':tenantId': tenantId,
           ':brandPrefix': 'BRAND#',
-          ':archived': 'archived',
-          ...(status && { ':status': status })
+          ':archived': 'archived'
         }),
         Limit: limit,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));
 
-      let brands = response.Items?.map(item => {
+      const brands = response.Items?.map(item => {
         const rawBrand = unmarshall(item);
-        return this._transformFromDynamoDB(rawBrand);
+        return this.fromDynamoDB(rawBrand);
       }) || [];
-
-      if (search) {
-        const searchTerm = search.toLowerCase();
-        brands = brands.filter(brand =>
-          brand.name.toLowerCase().includes(searchTerm) ||
-          brand.ethos.toLowerCase().includes(searchTerm) ||
-          brand.coreValues.some(value => value.toLowerCase().includes(searchTerm))
-        );
-      }
 
       const brandListResult = {
         items: brands,
@@ -712,7 +533,7 @@ export class Brand {
 
       return brandListResult;
     } catch (error) {
-      brandLogger.error('Brand list failed', {
+      logger.error('Brand list failed', {
         operation: 'list',
         tenantId,
         errorName: error.name,
@@ -720,13 +541,6 @@ export class Brand {
       });
       throw new Error('Failed to list brands');
     }
-  }
-
-  static extractContentRestrictions(brand) {
-    return {
-      avoidTopics: brand?.contentStandards?.restrictions || [],
-      avoidPhrases: brand?.contentStandards?.restrictions || []
-    };
   }
 
   static _calculateAssetLibraryStats(assets, timestamp) {
@@ -814,3 +628,4 @@ export class Brand {
     };
   }
 }
+

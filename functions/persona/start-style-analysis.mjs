@@ -2,13 +2,11 @@ import { DynamoDBClient, QueryCommand, GetItemCommand } from '@aws-sdk/client-dy
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { personaLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const eventBridge = new EventBridgeClient();
 
-// Request validation schema
 const triggerAnalysisSchema = z.object({
   personaId: z.string().min(1, 'Persona ID is required'),
   tenantId: z.string().min(1, 'Tenant ID is required')
@@ -62,12 +60,6 @@ async function validateExamples(tenantId, personaId) {
   return exampleCount;
 }
 
-/**
- * Trigger async style analysis via EventBridge
- * @param {string} tenantId - Tenant identifier
- * @param {string} personaId - Persona identifier
- * @returns {Object} Event result
- */
 async function triggerStyleAnalysis(tenantId, personaId) {
   const requestId = `analysis_${Date.now()}`;
   const triggeredAt = new Date().toISOString();
@@ -95,18 +87,20 @@ async function triggerStyleAnalysis(tenantId, personaId) {
   };
 }
 
-/**
- * Lambda handler for triggering style analysis
- * @param {Object} event - API Gateway event
- * @returns {Object} HTTP response
- */
 export const handler = async (event) => {
   try {
     const tenantId = event.requestContext?.authorizer?.tenantId;
     const personaId = event.pathParameters?.personaId;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     const validatedInput = triggerAnalysisSchema.parse({
@@ -118,18 +112,24 @@ export const handler = async (event) => {
 
     const exampleCount = await validateExamples(validatedInput.tenantId, validatedInput.personaId);
 
-    // Trigger async style analysis
     const analysisResult = await triggerStyleAnalysis(validatedInput.tenantId, validatedInput.personaId);
 
-    return formatResponse(202, {
-      message: 'Style analysis started',
-      personaId: validatedInput.personaId,
-      exampleCount,
-      requestId: analysisResult.requestId
-    });
+    return {
+      statusCode: 202,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        message: 'Style analysis started',
+        personaId: validatedInput.personaId,
+        exampleCount,
+        requestId: analysisResult.requestId
+      })
+    };
 
   } catch (error) {
-    personaLogger.error('Style analysis trigger operation failed', {
+    logger.error('Style analysis trigger operation failed', {
       operation: 'startStyleAnalysis',
       tenantId: event.requestContext?.authorizer?.tenantId,
       personaId: event.pathParameters?.personaId,
@@ -139,27 +139,69 @@ export const handler = async (event) => {
 
     if (error instanceof z.ZodError) {
       if (error.errors.some(e => e.path.includes('personaId'))) {
-        return formatResponse(400, { message: 'Required' });
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ message: 'Required' })
+        };
       }
-      return formatResponse(400, { message: 'Invalid request parameters' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Invalid request parameters' })
+      };
     }
 
     if (error.message.includes('not found')) {
-      return formatResponse(404, { message: 'Persona not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Persona not found' })
+      };
     }
 
     if (error.message.includes('not active')) {
-      return formatResponse(400, { message: 'Persona is not active' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Persona is not active' })
+      };
     }
 
     if (error.message.includes('Insufficient')) {
-      return formatResponse(422, {
-        message: error.message,
-        required: error.required,
-        provided: error.exampleCount
-      });
+      return {
+        statusCode: 422,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: error.message,
+          required: error.required,
+          provided: error.exampleCount
+        })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

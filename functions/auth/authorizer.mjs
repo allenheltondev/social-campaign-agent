@@ -2,7 +2,7 @@ import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { CognitoIdentityProviderClient, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { authLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 let verifier;
 const cognito = new CognitoIdentityProviderClient();
@@ -18,7 +18,7 @@ export const handler = async (event) => {
 
     const tokenMatch = authorizationToken.match(/^Bearer\s+(.+)$/);
     if (!tokenMatch) {
-      authLogger.error('Invalid authorization token format', {
+      logger.error('Invalid authorization token format', {
         operation: 'token-validation'
       });
       throw new Error('Unauthorized');
@@ -40,7 +40,7 @@ export const handler = async (event) => {
     const email = userInfo.email || '';
 
     if (!userId) {
-      authLogger.error('Missing userId (sub) in user attributes', {
+      logger.error('Missing userId (sub) in user attributes', {
         operation: 'user-validation'
       });
       throw new Error('Unauthorized');
@@ -65,7 +65,7 @@ export const handler = async (event) => {
 
     return policy;
   } catch (error) {
-    authLogger.error('Authorization failed', {
+    logger.error('Authorization failed', {
       operation: 'authorization',
       errorName: error.name,
       errorMessage: error.message,
@@ -88,7 +88,7 @@ const getUserAttributes = async (accessToken) => {
 
     return attrs;
   } catch (err) {
-    authLogger.error('Error fetching user attributes', {
+    logger.error('Error fetching user attributes', {
       operation: 'get-user-attributes',
       errorName: err.name,
       errorMessage: err.message
@@ -115,7 +115,7 @@ const getUserProfile = async (userId) => {
 
     return unmarshall(response.Item);
   } catch (err) {
-    authLogger.error('Error fetching user profile', {
+    logger.error('Error fetching user profile', {
       operation: 'get-user-profile',
       userId,
       errorName: err.name,

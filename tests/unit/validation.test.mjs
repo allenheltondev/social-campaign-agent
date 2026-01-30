@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validatePersonaEntity } from '../../utils/validation.mjs';
+import { PersonaSchema } from '../../models/persona.mjs';
 
 describe('Validation Utility Unit Tests', () => {
   it('should validate complete persona entity successfully', () => {
@@ -34,8 +34,8 @@ describe('Validation Utility Unit Tests', () => {
       isActive: true
     };
 
-    expect(() => validatePersonaEntity(validPersona)).not.toThrow();
-    const result = validatePersonaEntity(validPersona);
+    expect(() => PersonaSchema.parse(validPersona)).not.toThrow();
+    const result = PersonaSchema.parse(validPersona);
     expect(result.personaId).toBe(validPersona.personaId);
     expect(result.name).toBe(validPersona.name);
   });
@@ -72,7 +72,7 @@ describe('Validation Utility Unit Tests', () => {
       isActive: true
     };
 
-    expect(() => validatePersonaEntity(invalidPersona)).toThrow();
+    expect(() => PersonaSchema.parse(invalidPersona)).toThrow();
   });
 
   it('should reject persona with missing required fields', () => {
@@ -83,7 +83,7 @@ describe('Validation Utility Unit Tests', () => {
       // Missing required fields
     };
 
-    expect(() => validatePersonaEntity(incompletePersona)).toThrow();
+    expect(() => PersonaSchema.parse(incompletePersona)).toThrow();
   });
 
   it('should reject persona with invalid enum values', () => {
@@ -118,7 +118,7 @@ describe('Validation Utility Unit Tests', () => {
       isActive: true
     };
 
-    expect(() => validatePersonaEntity(invalidPersona)).toThrow();
+    expect(() => PersonaSchema.parse(invalidPersona)).toThrow();
   });
 
   it('should reject persona with too many strong beliefs', () => {
@@ -153,6 +153,6 @@ describe('Validation Utility Unit Tests', () => {
       isActive: true
     };
 
-    expect(() => validatePersonaEntity(invalidPersona)).toThrow();
+    expect(() => PersonaSchema.parse(invalidPersona)).toThrow();
   });
 });

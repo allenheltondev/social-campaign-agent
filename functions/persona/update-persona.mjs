@@ -1,6 +1,5 @@
-import { Persona, UpdatePersonaRequestSchema, validateRequestBody } from '../../models/persona.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { personaLogger } from '../../utils/logger.mjs';
+import { PersonaSchema, Persona } from '../../models/persona.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -8,28 +7,76 @@ export const handler = async (event) => {
     const { personaId } = event.pathParameters;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!personaId) {
-      return formatResponse(400, { message: 'Missing personaId parameter' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing personaId parameter' })
+      };
     }
 
-    const updates = validateRequestBody(UpdatePersonaRequestSchema, event.body);
+    const updateSchema = PersonaSchema.pick({
+      name: true,
+      role: true,
+      company: true,
+      primaryAudience: true
+    }).extend({
+      voiceTraits: PersonaSchema.shape.voiceTraits.optional(),
+      writingHabits: PersonaSchema.shape.writingHabits.optional(),
+      opinions: PersonaSchema.shape.opinions.optional(),
+      language: PersonaSchema.shape.language.optional(),
+      ctaStyle: PersonaSchema.shape.ctaStyle.optional()
+    }).partial();
+
+    const updates = updateSchema.parse(JSON.parse(event.body));
 
     if (Object.keys(updates).length === 0) {
-      return formatResponse(400, { message: 'No valid fields to update' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'No valid fields to update' })
+      };
     }
 
     const updatedPersona = await Persona.update(tenantId, personaId, updates);
 
     if (!updatedPersona) {
-      return formatResponse(404, { message: 'Persona not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Persona not found' })
+      };
     }
 
-    return formatResponse(200, updatedPersona);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(updatedPersona)
+    };
   } catch (error) {
-    personaLogger.error('Update persona operation failed', {
+    logger.error('Update persona operation failed', {
       operation: 'updatePersona',
       tenantId: event.requestContext?.authorizer?.tenantId,
       personaId: event.pathParameters?.personaId,
@@ -38,9 +85,23 @@ export const handler = async (event) => {
     });
 
     if (error.message.includes('Validation error')) {
-      return formatResponse(400, { message: error.message });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: error.message })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

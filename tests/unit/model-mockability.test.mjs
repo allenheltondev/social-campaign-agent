@@ -23,7 +23,7 @@ describe('Model Mockability for Testing', () => {
           const mockModel = createMockModel(modelType);
 
           // Verify all required methods are present and mockable
-          const requiredMethods = ['findById', 'save', 'update', 'delete', 'validateEntity', 'validateUpdateData'];
+          const requiredMethods = ['findById', 'save', 'update', 'delete'];
 
           for (const method of requiredMethods) {
             expect(mockModel[method]).toBeDefined();
@@ -88,37 +88,7 @@ describe('Model Mockability for Testing', () => {
     );
   });
 
-  it('should allow mocking of validation methods without external dependencies', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom('Brand', 'Persona', 'Campaign', 'SocialPost'),
-        fc.record({
-          name: fc.string({ minLength: 1, maxLength: 100 }),
-          data: fc.object()
-        }),
-        (modelType, testData) => {
-          const mockModel = createMockModel(modelType);
 
-          // Mock validation methods
-          const validEntity = { id: 'test-id', ...testData.data };
-          mockModel.validateEntity.mockReturnValue(validEntity);
-          mockModel.validateUpdateData.mockReturnValue(testData.data);
-
-          // Test validation methods work independently
-          const validatedEntity = mockModel.validateEntity(testData.data);
-          expect(validatedEntity).toEqual(validEntity);
-          expect(mockModel.validateEntity).toHaveBeenCalledWith(testData.data);
-
-          const validatedUpdateData = mockModel.validateUpdateData(testData.data);
-          expect(validatedUpdateData).toEqual(testData.data);
-          expect(mockModel.validateUpdateData).toHaveBeenCalledWith(testData.data);
-
-          return true;
-        }
-      ),
-      { numRuns: 30 }
-    );
-  });
 
   it('should support error simulation for testing error handling', async () => {
     await fc.assert(
@@ -129,22 +99,15 @@ describe('Model Mockability for Testing', () => {
         async (modelType, errorType, errorMessage) => {
           const mockModel = createMockModel(modelType);
 
-          // Setup error responses
           const testError = new Error(errorMessage);
           testError.name = errorType;
 
           mockModel.findById.mockRejectedValue(testError);
           mockModel.save.mockRejectedValue(testError);
-          mockModel.validateEntity.mockImplementation(() => {
-            throw testError;
-          });
 
-          // Test that errors are properly thrown
           await expect(mockModel.findById('tenant', 'id')).rejects.toThrow(errorMessage);
           await expect(mockModel.save('tenant', {})).rejects.toThrow(errorMessage);
-          expect(() => mockModel.validateEntity({})).toThrow(errorMessage);
 
-          // Verify error types are preserved
           try {
             await mockModel.findById('tenant', 'id');
           } catch (error) {
@@ -206,20 +169,17 @@ describe('Model Mockability for Testing', () => {
     fc.assert(
       fc.property(
         fc.record({
-          brandMethods: fc.constantFrom('getDefaultBrandConfiguration', 'extractCadenceDefaults'),
-          personaMethods: fc.constantFrom('enrichForCampaign', 'mergeEffectiveRestrictions'),
+          brandMethods: fc.constantFrom('getDefaultBrandConfiguration'),
           campaignMethods: fc.constantFrom('loadFullConfiguration'),
           socialPostMethods: fc.constantFrom('updateStatus', 'createSocialPosts')
         }),
         (testMethods) => {
-          // Test Brand-specific methods
           const brandMock = createMockModel('Brand');
           expect(vi.isMockFunction(brandMock[testMethods.brandMethods])).toBe(true);
 
-          // Test Persona-specific methods
           const personaMock = createMockModel('Persona');
-          expect(vi.isMockFunction(personaMock[testMethods.personaMethods])).toBe(true);
-
+          expect(vi.isMockFunction(personaMock.list)).toBe(true);
+          expect(vi.isMockFunction(personaMock.findByIds)).toBe(true);
           // Test Campaign-specific methods
           const campaignMock = createMockModel('Campaign');
           expect(vi.isMockFunction(campaignMock[testMethods.campaignMethods])).toBe(true);

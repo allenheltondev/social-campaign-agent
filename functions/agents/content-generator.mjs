@@ -6,7 +6,7 @@ import { Persona } from '../../models/persona.mjs';
 import { Brand } from '../../models/brand.mjs';
 import { AssetResolver } from '../../utils/asset-resolver.mjs';
 import { saveGeneratedContentTool } from './tools.mjs';
-import { agentLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -223,7 +223,7 @@ export const run = async (tenantId, postData) => {
           const unavailableAssets = resolvedAssets.filter(asset => !asset.available);
 
           if (unavailableAssets.length > 0) {
-            agentLogger.error('Some assets are unavailable for content generation', {
+            logger.error('Some assets are unavailable for content generation', {
               operation: 'content-generation',
               postId,
               campaignId,
@@ -236,7 +236,7 @@ export const run = async (tenantId, postData) => {
           }
         }
       } catch (error) {
-        agentLogger.error('Asset resolution failed for post', {
+        logger.error('Asset resolution failed for post', {
           operation: 'asset-resolution',
           postId,
           campaignId,
@@ -270,7 +270,7 @@ export const run = async (tenantId, postData) => {
       error: null
     };
   } catch (error) {
-    agentLogger.error('Content generation error', {
+    logger.error('Content generation error', {
       operation: 'content-generation',
       postId: postData?.postId,
       campaignId: postData?.campaignId,
@@ -298,7 +298,7 @@ export const run = async (tenantId, postData) => {
           })
         }));
       } catch (updateError) {
-        agentLogger.error('Failed to update post status', {
+        logger.error('Failed to update post status', {
           operation: 'update-post-status',
           postId,
           campaignId,
@@ -352,7 +352,7 @@ export const handler = async (event) => {
       };
     }
   } catch (error) {
-    agentLogger.error('Content generation handler error', {
+    logger.error('Content generation handler error', {
       operation: 'content-generation-handler',
       postId: event.detail?.postId,
       campaignId: event.detail?.campaignId,

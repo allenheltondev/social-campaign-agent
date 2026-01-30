@@ -1,13 +1,9 @@
 import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
 
 const ddb = new DynamoDBClient();
 
 export const handler = async (event) => {
-  const operation = 'list-assets';
-
   try {
     const { tenantId } = event.requestContext.authorizer;
     const { brandId } = event.pathParameters;
@@ -15,11 +11,25 @@ export const handler = async (event) => {
     const requestedLimit = parseInt(event.queryStringParameters?.limit) || 25;
 
     if (!tenantId) {
-      throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!brandId) {
-      throw new BrandError('Missing brandId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing brandId parameter' })
+      };
     }
 
     const queryParams = {
@@ -73,11 +83,23 @@ export const handler = async (event) => {
       assetListResponse.nextToken = Buffer.from(JSON.stringify(response.LastEvaluatedKey)).toString('base64');
     }
 
-    return formatResponse(200, assetListResponse);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(assetListResponse)
+    };
   } catch (error) {
-    return createStandardizedError(error, operation, {
-      tenantId: event.requestContext?.authorizer?.tenantId,
-      brandId: event.pathParameters?.brandId
-    });
+    console.error(error);
+    return {
+      statusCode: error.statusCode || 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: error.message || 'Internal server error' })
+    };
   }
 };

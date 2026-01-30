@@ -1,10 +1,9 @@
 import { Agent, BedrockModel } from '@strands-agents/sdk';
 import { Campaign } from '../../models/campaign.mjs';
 import { SocialPost } from '../../models/social-post.mjs';
-import { Brand } from '../../models/brand.mjs';
 import { createSocialPostsTool } from './tools.mjs';
 import { AssetPoolBuilder } from '../../utils/asset-pool-builder.mjs';
-import { agentLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const buildBrandGuidelinesSection = (brandConfig) => {
   if (!brandConfig) {
@@ -148,7 +147,14 @@ const buildCampaignPrompt = (campaignId, tenantId, campaign, brandConfig, person
     { name: 'Engagement', weight: 0.3 }
   ];
 
-  const assetDefaults = Brand.extractAssetRequirements(brandConfig);
+  const platformDefaults = brandConfig?.platformGuidelines?.defaults || {};
+  const assetDefaults = {
+    twitter: platformDefaults.twitter?.defaultAsset === 'image',
+    linkedin: platformDefaults.linkedin?.defaultAsset === 'image',
+    instagram: platformDefaults.instagram?.defaultAsset !== 'none',
+    facebook: platformDefaults.facebook?.defaultAsset === 'image'
+  };
+
   const assetOverrides = campaign.assetOverrides?.forceVisuals || {};
   const assetRequirements = {
     twitter: assetOverrides.twitter ?? assetDefaults.twitter ?? false,
@@ -300,7 +306,7 @@ const buildAssetContext = async (tenantId, brandId, campaignAssets) => {
       hasDefaultAssets: planningContext.hasDefaultAssets
     };
   } catch (error) {
-    agentLogger.error('Asset context building failed', {
+    logger.error('Asset context building failed', {
       operation: 'build-asset-context',
       tenantId,
       brandId,
@@ -342,7 +348,7 @@ export const run = async (tenantId, campaignData) => {
     const { items: posts } = await SocialPost.findByCampaign(tenantId, campaignId);
 
     if (!posts || posts.length === 0) {
-      agentLogger.error('No posts found after agent execution', {
+      logger.error('No posts found after agent execution', {
         operation: 'campaign-planning',
         campaignId,
         tenantId
@@ -350,21 +356,13 @@ export const run = async (tenantId, campaignData) => {
       throw new Error('No posts were created by the campaign planner');
     }
 
-    const now = new Date().toISOString();
     await Campaign.update(tenantId, campaignId, {
-      status: 'awaiting_review',
-      approval: {
-        status: 'awaiting_review',
-        submittedAt: now,
-        reviewedAt: null,
-        approvedPostCount: 0,
-        totalPostCount: posts.length
-      }
+      status: 'completed'
     });
 
     return { posts, success: true };
   } catch (error) {
-    agentLogger.error('Campaign planning failed', {
+    logger.error('Campaign planning failed', {
       operation: 'campaign-planning',
       campaignId: campaignData?.campaignId,
       tenantId,
@@ -385,7 +383,7 @@ export const run = async (tenantId, campaignData) => {
           }
         });
       } catch (updateError) {
-        agentLogger.error('Failed to update campaign status after planning error', {
+        logger.error('Failed to update campaign status after planning error', {
           operation: 'update-campaign-status',
           campaignId: campaignData.campaignId,
           tenantId,
@@ -434,7 +432,7 @@ export const handler = async (event) => {
       };
     }
   } catch (error) {
-    agentLogger.error('Campaign planning handler failed', {
+    logger.error('Campaign planning handler failed', {
       operation: 'campaign-planning-handler',
       campaignId: event.detail?.campaignId,
       tenantId: event.detail?.tenantId,

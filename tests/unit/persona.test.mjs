@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import {
-  CreatePersonaRequestSchema,
-  validateRequestBody
-} from '../../models/persona.mjs';
+import { PersonaSchema } from '../../models/persona.mjs';
 
 describe('Persona Schemas', () => {
-  describe('CreatePersonaRequestSchema', () => {
+  describe('PersonaSchema with inline transformations', () => {
     it('should validate a minimal persona creation request with only required fields', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true
+      });
+
       const minimalPersona = {
         name: 'John Doe',
         role: 'Marketing Manager',
@@ -14,10 +18,22 @@ describe('Persona Schemas', () => {
         primaryAudience: 'professionals'
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(minimalPersona)).not.toThrow();
+      expect(() => createSchema.parse(minimalPersona)).not.toThrow();
     });
 
     it('should validate a complete persona creation request', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true,
+        voiceTraits: true,
+        writingHabits: true,
+        opinions: true,
+        language: true,
+        ctaStyle: true
+      });
+
       const validPersona = {
         name: 'John Doe',
         role: 'Marketing Manager',
@@ -44,10 +60,22 @@ describe('Persona Schemas', () => {
         }
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(validPersona)).not.toThrow();
+      expect(() => createSchema.parse(validPersona)).not.toThrow();
     });
 
     it('should reject persona with too many strong beliefs', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true,
+        voiceTraits: true,
+        writingHabits: true,
+        opinions: true,
+        language: true,
+        ctaStyle: true
+      });
+
       const invalidPersona = {
         name: 'John Doe',
         role: 'Marketing Manager',
@@ -74,10 +102,19 @@ describe('Persona Schemas', () => {
         }
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+      expect(() => createSchema.parse(invalidPersona)).toThrow();
     });
 
     it('should validate partial persona with some optional fields', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true,
+        voiceTraits: true,
+        opinions: true
+      });
+
       const partialPersona = {
         name: 'Jane Smith',
         role: 'Content Strategist',
@@ -90,52 +127,92 @@ describe('Persona Schemas', () => {
         }
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(partialPersona)).not.toThrow();
+      expect(() => createSchema.parse(partialPersona)).not.toThrow();
     });
 
     it('should reject persona missing name', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true
+      });
+
       const invalidPersona = {
         role: 'Marketing Manager',
         company: 'Tech Corp',
         primaryAudience: 'professionals'
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+      expect(() => createSchema.parse(invalidPersona)).toThrow();
     });
 
     it('should reject persona missing role', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true
+      });
+
       const invalidPersona = {
         name: 'John Doe',
         company: 'Tech Corp',
         primaryAudience: 'professionals'
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+      expect(() => createSchema.parse(invalidPersona)).toThrow();
     });
 
     it('should reject persona missing company', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true
+      });
+
       const invalidPersona = {
         name: 'John Doe',
         role: 'Marketing Manager',
         primaryAudience: 'professionals'
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+      expect(() => createSchema.parse(invalidPersona)).toThrow();
     });
 
     it('should reject persona missing primaryAudience', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true
+      });
+
       const invalidPersona = {
         name: 'John Doe',
         role: 'Marketing Manager',
         company: 'Tech Corp'
       };
 
-      expect(() => CreatePersonaRequestSchema.parse(invalidPersona)).toThrow();
+      expect(() => createSchema.parse(invalidPersona)).toThrow();
     });
   });
 
-  describe('validateRequestBody', () => {
+  describe('validateRequestBody pattern', () => {
     it('should parse valid JSON and validate', () => {
+      const createSchema = PersonaSchema.pick({
+        name: true,
+        role: true,
+        company: true,
+        primaryAudience: true,
+        voiceTraits: true,
+        writingHabits: true,
+        opinions: true,
+        language: true,
+        ctaStyle: true
+      });
+
       const validJson = JSON.stringify({
         name: 'Test User',
         role: 'Developer',
@@ -162,13 +239,14 @@ describe('Persona Schemas', () => {
         }
       });
 
-      expect(() => validateRequestBody(CreatePersonaRequestSchema, validJson)).not.toThrow();
+      const parsed = JSON.parse(validJson);
+      expect(() => createSchema.parse(parsed)).not.toThrow();
     });
 
     it('should throw error for invalid JSON', () => {
       const invalidJson = '{ invalid json }';
 
-      expect(() => validateRequestBody(CreatePersonaRequestSchema, invalidJson)).toThrow('Invalid JSON in request body');
+      expect(() => JSON.parse(invalidJson)).toThrow();
     });
   });
 });

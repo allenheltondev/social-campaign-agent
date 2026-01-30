@@ -6,7 +6,7 @@ import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand } fro
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
 vi.mock('../../utils/logger.mjs', () => ({
-  assetLogger: {
+  logger: {
     error: vi.fn()
   }
 }));

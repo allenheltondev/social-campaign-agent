@@ -1,6 +1,5 @@
 import { Persona } from '../../models/persona.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { personaLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -8,28 +7,63 @@ export const handler = async (event) => {
     const { personaId } = event.pathParameters;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!personaId) {
-      return formatResponse(400, { message: 'Missing personaId parameter' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing personaId parameter' })
+      };
     }
 
     const persona = await Persona.findById(tenantId, personaId);
 
     if (!persona) {
-      return formatResponse(404, { message: 'Persona not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Persona not found' })
+      };
     }
 
-    return formatResponse(200, persona);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(persona)
+    };
   } catch (error) {
-    personaLogger.error('Get persona operation failed', {
+    logger.error('Get persona operation failed', {
       operation: 'getPersona',
       tenantId: event.requestContext?.authorizer?.tenantId,
       personaId: event.pathParameters?.personaId,
       errorName: error.name,
       errorMessage: error.message
     });
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

@@ -44,10 +44,7 @@ export class ModelMockFactory {
         }
       })),
       transformFromDynamoDB: vi.fn(),
-      transformToDynamoDB: vi.fn(),
-      extractCadenceDefaults: vi.fn(),
-      extractAssetRequirements: vi.fn(),
-      extractContentRestrictions: vi.fn()
+      transformToDynamoDB: vi.fn()
     };
   }
 
@@ -58,9 +55,7 @@ export class ModelMockFactory {
       ...baseMock,
       list: vi.fn(),
       findByIds: vi.fn(),
-      transformFromDynamoDB: vi.fn(),
-      enrichForCampaign: vi.fn(),
-      mergeEffectiveRestrictions: vi.fn()
+      transformFromDynamoDB: vi.fn()
     };
   }
 

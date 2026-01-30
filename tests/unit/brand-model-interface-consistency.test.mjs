@@ -175,10 +175,12 @@ describe('Brand Model Interface Consistency', () => {
   it('should have internal transformation methods that are not exposed in public interface', async () => {
     const { Brand } = await import('../../models/brand.mjs');
 
-    expect(typeof Brand._transformFromDynamoDB).toBe('function');
-    expect(typeof Brand._transformToDynamoDB).toBe('function');
+    expect(typeof Brand.fromDynamoDB).toBe('function');
+    expect(typeof Brand.toDynamoDB).toBe('function');
 
-    expect(Brand._transformFromDynamoDB.length).toBe(1);
-    expect(Brand._transformToDynamoDB.length).toBe(2);
+    expect(Brand.fromDynamoDB.length).toBe(1);
+    expect(Brand.toDynamoDB.length).toBe(2);
   });
 });
+
+

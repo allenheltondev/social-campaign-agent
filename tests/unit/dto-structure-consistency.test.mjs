@@ -292,7 +292,7 @@ describe('DTO Structure Consistency Across Entities', () => {
                 updatedAt: now
               };
 
-              result = Brand._transformFromDynamoDB(rawBrandItem);
+              result = Brand.fromDynamoDB(rawBrandItem);
               break;
             }
 
@@ -332,7 +332,7 @@ describe('DTO Structure Consistency Across Entities', () => {
                 updatedAt: now
               };
 
-              result = Persona.transformFromDynamoDB(rawPersonaItem);
+              result = Persona.fromDynamoDB(rawPersonaItem);
               break;
             }
 
@@ -378,7 +378,7 @@ describe('DTO Structure Consistency Across Entities', () => {
                 completedAt: null
               };
 
-              result = Campaign._transformFromDynamoDB(rawCampaignItem);
+              result = Campaign.fromDynamoDB(rawCampaignItem);
               break;
             }
 
@@ -402,7 +402,7 @@ describe('DTO Structure Consistency Across Entities', () => {
                 updatedAt: now
               };
 
-              result = SocialPost._transformFromDynamoDB(rawPostItem);
+              result = SocialPost.fromDynamoDB(rawPostItem);
               break;
             }
           }
@@ -445,3 +445,5 @@ describe('DTO Structure Consistency Across Entities', () => {
     );
   });
 });
+
+

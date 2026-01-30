@@ -15,6 +15,10 @@ export const handler = async (event) => {
     if (!tenantId || !userId) {
       return {
         statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({ message: 'Unauthorized' })
       };
     }
@@ -22,6 +26,10 @@ export const handler = async (event) => {
     if (!assetId) {
       return {
         statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({ message: 'Asset ID is required' })
       };
     }
@@ -30,6 +38,10 @@ export const handler = async (event) => {
     if (!asset) {
       return {
         statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({ message: 'Asset not found' })
       };
     }
@@ -40,6 +52,10 @@ export const handler = async (event) => {
     } catch (error) {
       return {
         statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({ message: 'Invalid JSON in request body' })
       };
     }
@@ -58,6 +74,10 @@ export const handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         id: updatedAsset.id,
         approvalStatus: updatedAsset.approvalStatus,
@@ -72,6 +92,10 @@ export const handler = async (event) => {
       }));
       return {
         statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({
           message: 'Validation error',
           errors: validationErrors
@@ -82,6 +106,10 @@ export const handler = async (event) => {
     console.error('Asset approval error:', error);
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ message: 'Failed to update asset approval status' })
     };
   }

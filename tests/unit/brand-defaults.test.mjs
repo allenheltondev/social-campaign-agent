@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from "vitest";
-import { getBrandDefaults } from "../../utils/brand-defaults.mjs";
+import { getBrandDefaults } from "../../utils/defaults.mjs";
 import { BrandSchema } from "../../models/brand.mjs";
 
 describe("Brand Defaults Generation", () => {

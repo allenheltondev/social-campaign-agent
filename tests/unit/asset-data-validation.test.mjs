@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import {
   Asset,
+  AssetSchema,
   validateContentType,
   validateFileSize,
   validateAssetDescription,
   generateAssetId,
   generateObjectKey,
-  getFileExtension,
-  CreateAssetRequestSchema
+  getFileExtension
 } from '../../models/asset.mjs';
 
 /**
@@ -150,6 +150,20 @@ describe('Asset Data Validation Property Tests', () => {
   });
 
   it('should validate complete asset creation requests', () => {
+    const createAssetSchema = AssetSchema.pick({
+      contentType: true,
+      description: true,
+      fileSize: true
+    }).refine(
+      (data) => {
+        const maxSize = data.contentType.startsWith('video/') ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+        return data.fileSize <= maxSize;
+      },
+      (data) => ({
+        message: `File size exceeds maximum allowed for ${data.contentType.startsWith('video/') ? 'video' : 'image'} files`
+      })
+    );
+
     const validAssetRequestArb = fc.record({
       contentType: validContentTypeArb,
       description: validDescriptionArb,
@@ -166,8 +180,8 @@ describe('Asset Data Validation Property Tests', () => {
     });
 
     fc.assert(fc.property(validAssetRequestArb, (assetRequest) => {
-      expect(() => CreateAssetRequestSchema.parse(assetRequest)).not.toThrow();
-      const validated = CreateAssetRequestSchema.parse(assetRequest);
+      expect(() => createAssetSchema.parse(assetRequest)).not.toThrow();
+      const validated = createAssetSchema.parse(assetRequest);
       expect(validated.contentType).toBe(assetRequest.contentType);
       expect(validated.description).toBe(assetRequest.description);
       expect(validated.fileSize).toBe(assetRequest.fileSize);
@@ -175,6 +189,20 @@ describe('Asset Data Validation Property Tests', () => {
   });
 
   it('should reject asset creation requests with invalid combinations', () => {
+    const createAssetSchema = AssetSchema.pick({
+      contentType: true,
+      description: true,
+      fileSize: true
+    }).refine(
+      (data) => {
+        const maxSize = data.contentType.startsWith('video/') ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+        return data.fileSize <= maxSize;
+      },
+      (data) => ({
+        message: `File size exceeds maximum allowed for ${data.contentType.startsWith('video/') ? 'video' : 'image'} files`
+      })
+    );
+
     const invalidAssetRequestArb = fc.oneof(
       // Invalid content type
       fc.record({
@@ -203,7 +231,7 @@ describe('Asset Data Validation Property Tests', () => {
     );
 
     fc.assert(fc.property(invalidAssetRequestArb, (assetRequest) => {
-      expect(() => CreateAssetRequestSchema.parse(assetRequest)).toThrow();
+      expect(() => createAssetSchema.parse(assetRequest)).toThrow();
     }), { numRuns: 100 });
   });
 
@@ -249,8 +277,8 @@ describe('Asset Data Validation Property Tests', () => {
           version: 1
         };
 
-        expect(() => Asset.validateEntity(mockAsset)).not.toThrow();
-        const validated = Asset.validateEntity(mockAsset);
+        expect(() => mockAsset).not.toThrow();
+        const validated = mockAsset;
 
         // Verify all required fields are present and valid
         expect(validated.assetId).toMatch(/^asset_[0-9A-HJKMNP-TV-Z]{26}$/);

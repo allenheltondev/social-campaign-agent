@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { SocialPost } from '../../models/social-post.mjs';
-import { agentLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -40,7 +40,7 @@ export const createSocialPostsTool = tool({
 
       return socialPostsCreationResult;
     } catch (error) {
-      agentLogger.error('Tool execution operation failed', {
+      logger.error('Tool execution operation failed', {
         operation: 'createSocialPosts',
         tenantId: input.tenantId,
         campaignId: input.campaignId,
@@ -234,7 +234,7 @@ export const saveGeneratedContentTool = tool({
         status: 'completed'
       };
     } catch (error) {
-      agentLogger.error('Failed to save generated content', {
+      logger.error('Failed to save generated content', {
         operation: 'saveGeneratedContent',
         tenantId: input.tenantId,
         campaignId: input.campaignId,
@@ -324,7 +324,7 @@ export const saveStyleAnalysisTool = tool({
       return `Successfully saved style analysis for persona ${personaId}.`;
 
     } catch (error) {
-      agentLogger.error('Error saving style analysis', {
+      logger.error('Error saving style analysis', {
         operation: 'saveStyleAnalysis',
         tenantId: input.tenantId,
         personaId: input.personaId,

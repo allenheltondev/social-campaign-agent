@@ -13,7 +13,7 @@ const simpleCampaignGenerator = fc.record({
   GSI2PK: fc.string({ minLength: 1, maxLength: 50 }),
   GSI2SK: fc.string({ minLength: 1, maxLength: 100 }),
   name: fc.string({ minLength: 1, maxLength: 200 }),
-  status: fc.constantFrom('planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review'),
+  status: fc.constantFrom('planning', 'generating', 'completed', 'failed', 'cancelled'),
   createdAt: fc.constant('2024-01-01T00:00:00.000Z'),
   updatedAt: fc.constant('2024-01-01T00:00:00.000Z'),
   completedAt: fc.constant(null),
@@ -54,7 +54,7 @@ describe('Campaign DTO Properties', () => {
           simpleCampaignGenerator,
           (rawCampaign) => {
             try {
-              const dto = Campaign._transformFromDynamoDB(rawCampaign);
+              const dto = Campaign.fromDynamoDB(rawCampaign);
 
               expect(dto).not.toHaveProperty('tenantId');
               expect(dto).not.toHaveProperty('pk');
@@ -81,7 +81,7 @@ describe('Campaign DTO Properties', () => {
           simpleCampaignGenerator,
           (rawCampaign) => {
             try {
-              const dto = Campaign._transformFromDynamoDB(rawCampaign);
+              const dto = Campaign.fromDynamoDB(rawCampaign);
 
               const databaseKeys = ['pk', 'sk', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK'];
               databaseKeys.forEach(key => {
@@ -105,7 +105,7 @@ describe('Campaign DTO Properties', () => {
           simpleCampaignGenerator,
           (rawCampaign) => {
             try {
-              const dto = Campaign._transformFromDynamoDB(rawCampaign);
+              const dto = Campaign.fromDynamoDB(rawCampaign);
 
               expect(dto).toHaveProperty('id');
               expect(typeof dto.id).toBe('string');
@@ -121,3 +121,4 @@ describe('Campaign DTO Properties', () => {
     });
   });
 });
+

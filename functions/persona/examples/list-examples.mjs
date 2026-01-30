@@ -1,7 +1,6 @@
 import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { personaLogger } from '../../../utils/logger.mjs';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -11,11 +10,25 @@ export const handler = async (event) => {
     const { personaId } = event.pathParameters;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!personaId) {
-      return formatResponse(400, { message: 'Missing personaId parameter' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing personaId parameter' })
+      };
     }
 
     const limit = event.queryStringParameters?.limit ? parseInt(event.queryStringParameters.limit) : 20;
@@ -25,7 +38,14 @@ export const handler = async (event) => {
       try {
         exclusiveStartKey = JSON.parse(Buffer.from(event.queryStringParameters.nextToken, 'base64').toString());
       } catch (e) {
-        return formatResponse(400, { message: 'Invalid nextToken' });
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ message: 'Invalid nextToken' })
+        };
       }
     }
 
@@ -48,7 +68,6 @@ export const handler = async (event) => {
       delete example.GSI1PK;
       delete example.GSI1SK;
 
-      // Include analysis metadata if available
       return {
         exampleId: example.exampleId,
         personaId: example.personaId,
@@ -67,15 +86,29 @@ export const handler = async (event) => {
       exampleListResponse.nextToken = Buffer.from(JSON.stringify(unmarshall(response.LastEvaluatedKey))).toString('base64');
     }
 
-    return formatResponse(200, exampleListResponse);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(exampleListResponse)
+    };
   } catch (error) {
-    personaLogger.error('List examples failed', {
+    logger.error('List examples failed', {
       operation: 'list-examples',
       tenantId: event.requestContext?.authorizer?.tenantId,
       personaId: event.pathParameters?.personaId,
       errorName: error.name,
       errorMessage: error.message
     });
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

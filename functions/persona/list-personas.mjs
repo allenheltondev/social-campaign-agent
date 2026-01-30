@@ -1,16 +1,28 @@
-import { Persona, QueryPersonasRequestSchema, validateQueryParams } from '../../models/persona.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { personaLogger } from '../../utils/logger.mjs';
+import { Persona, PersonaSchema } from '../../models/persona.mjs';
+import { logger } from '../../utils/logger.mjs';
+
+const QueryParamsSchema = PersonaSchema.pick({
+  company: true,
+  role: true,
+  primaryAudience: true
+}).partial();
 
 export const handler = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
-    const queryParams = validateQueryParams(QueryPersonasRequestSchema, event.queryStringParameters || {});
+    const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
 
     const personaListResponse = await Persona.list(tenantId, queryParams);
 
@@ -19,9 +31,16 @@ export const handler = async (event) => {
       ...personaListResponse.pagination
     };
 
-    return formatResponse(200, response);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(response)
+    };
   } catch (error) {
-    personaLogger.error('List personas operation failed', {
+    logger.error('List personas operation failed', {
       operation: 'listPersonas',
       tenantId: event.requestContext?.authorizer?.tenantId,
       errorName: error.name,
@@ -29,9 +48,23 @@ export const handler = async (event) => {
     });
 
     if (error.message.includes('validation error') || error.message.includes('Invalid nextToken')) {
-      return formatResponse(400, { message: error.message });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: error.message })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

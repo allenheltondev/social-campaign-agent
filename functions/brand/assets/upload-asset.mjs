@@ -1,26 +1,47 @@
 import { DynamoDBClient, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { CreateBrandAssetRequestSchema, validateRequestBody, generateAssetId } from '../../../models/brand.mjs';
-import { formatResponse } from '../../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../../utils/error-handler.mjs';
+import { z } from 'zod';
+import { ulid } from 'ulid';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const s3Client = new S3Client();
 
-export const handler = async (event) => {
-  const operation = 'upload-asset';
+const CreateBrandAssetSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(['logo', 'image', 'video', 'document']),
+  contentType: z.string(),
+  fileData: z.string(),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional()
+});
 
+export const handler = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
     const { brandId } = event.pathParameters;
 
     if (!tenantId) {
-      throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!brandId) {
-      throw new BrandError('Missing brandId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing brandId parameter' })
+      };
     }
 
     const brandResponse = await ddb.send(new GetItemCommand({
@@ -32,23 +53,36 @@ export const handler = async (event) => {
     }));
 
     if (!brandResponse.Item) {
-      throw new BrandError('Brand not found', BrandErrorCodes.NOT_FOUND, 404);
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Brand not found' })
+      };
     }
 
-    const requestData = validateRequestBody(CreateBrandAssetRequestSchema, event.body);
+    const requestData = CreateBrandAssetSchema.parse(JSON.parse(event.body));
 
     const { fileData, ...assetMetadata } = requestData;
 
     if (!fileData) {
-      throw new BrandError('File data is required', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'File data is required' })
+      };
     }
 
-    const assetId = generateAssetId();
+    const assetId = ulid();
     const now = new Date().toISOString();
     const s3Bucket = process.env.ASSETS_BUCKET_NAME;
     const s3Key = `${tenantId}/${brandId}/${assetId}`;
 
-    // Upload file to S3
     const fileBuffer = Buffer.from(fileData, 'base64');
 
     try {
@@ -65,9 +99,21 @@ export const handler = async (event) => {
         }
       }));
     } catch (s3Error) {
-      throw new BrandError('Asset upload failed', BrandErrorCodes.ASSET_UPLOAD_FAILED, 500, {
-        s3Error: s3Error.message
+      logger.error('Asset upload to S3 failed', {
+        operation: 'upload-asset',
+        tenantId,
+        brandId,
+        errorName: s3Error.name,
+        errorMessage: s3Error.message
       });
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Asset upload failed' })
+      };
     }
 
     const asset = {
@@ -82,7 +128,6 @@ export const handler = async (event) => {
       updatedAt: now
     };
 
-    // Store asset metadata in DynamoDB
     await ddb.send(new PutItemCommand({
       TableName: process.env.TABLE_NAME,
       Item: marshall({
@@ -95,11 +140,41 @@ export const handler = async (event) => {
       ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
     }));
 
-    return formatResponse(201, asset);
+    return {
+      statusCode: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(asset)
+    };
   } catch (error) {
-    return createStandardizedError(error, operation, {
+    logger.error('Upload asset failed', {
+      operation: 'upload-asset',
       tenantId: event.requestContext?.authorizer?.tenantId,
-      brandId: event.pathParameters?.brandId
+      brandId: event.pathParameters?.brandId,
+      errorName: error.name,
+      errorMessage: error.message
     });
+
+    if (error.message.includes('Validation error')) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: error.message })
+      };
+    }
+
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

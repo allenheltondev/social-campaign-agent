@@ -4,7 +4,7 @@ import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { saveStyleAnalysisTool } from './tools.mjs';
-import { agentLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 const eventBridge = new EventBridgeClient();
@@ -35,7 +35,7 @@ async function emitAnalysisEvent(tenantId, personaId, status, details = {}) {
     await eventBridge.send(new PutEventsCommand(eventParams));
 
   } catch (error) {
-    agentLogger.error('Failed to emit EventBridge event', {
+    logger.error('Failed to emit EventBridge event', {
       operation: 'emitStyleAnalysisEvent',
       tenantId,
       personaId,
@@ -158,7 +158,7 @@ After completing your analysis, use the save_style_analysis tool to save the res
       };
 
     } catch (error) {
-      agentLogger.error('Style inference operation failed', {
+      logger.error('Style inference operation failed', {
         operation: 'styleInference',
         tenantId: input?.tenantId,
         personaId: input?.personaId,
@@ -203,7 +203,7 @@ export const handler = async (event) => {
     };
 
   } catch (error) {
-    agentLogger.error('Handler operation failed', {
+    logger.error('Handler operation failed', {
       operation: 'personaInferenceHandler',
       tenantId: event.detail?.tenantId,
       personaId: event.detail?.personaId,

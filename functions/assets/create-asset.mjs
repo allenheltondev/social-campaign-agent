@@ -1,6 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
-import { Asset, CreateAssetRequestSchema, validateRequestBody } from '../../models/asset.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
+import { Asset, AssetSchema } from '../../models/asset.mjs';
 import {
   validateContentPolicy,
   generateSecureSignedUrl,
@@ -8,7 +7,7 @@ import {
   AssetSecurityError,
   SecurityViolationTypes
 } from '../../utils/asset-security.mjs';
-import { assetLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 const s3Client = new S3Client();
 
@@ -17,10 +16,32 @@ export const handler = async (event) => {
     const { tenantId } = event.requestContext.authorizer;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized: Missing tenant context' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized: Missing tenant context' })
+      };
     }
 
-    const requestData = validateRequestBody(CreateAssetRequestSchema, event.body);
+    const requestSchema = AssetSchema.pick({
+      contentType: true,
+      description: true,
+      fileSize: true
+    }).refine(
+      (data) => {
+        const maxSize = data.contentType.startsWith('video/') ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+        return data.fileSize <= maxSize;
+      },
+      (data) => ({
+        message: `File size exceeds maximum allowed for ${data.contentType.startsWith('video/') ? 'video' : 'image'} files`
+      })
+    );
+
+    const body = JSON.parse(event.body);
+    const requestData = requestSchema.parse(body);
 
     // Enhanced security validation
     try {
@@ -31,10 +52,17 @@ export const handler = async (event) => {
           violations: error.details.violations
         });
 
-        return formatResponse(400, {
-          message: 'Content policy violation',
-          details: error.details.violations
-        });
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            message: 'Content policy violation',
+            details: error.details.violations
+          })
+        };
       }
       throw error;
     }
@@ -60,20 +88,27 @@ export const handler = async (event) => {
       fileSize: requestData.fileSize
     });
 
-    return formatResponse(201, {
-      asset: {
-        id: asset.id,
-        contentType: asset.contentType,
-        description: asset.description,
-        uploadStatus: asset.uploadStatus,
-        uploadUrl: presignedUrl,
-        objectKey: asset.objectKey,
-        createdAt: asset.createdAt
-      }
-    });
+    return {
+      statusCode: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        asset: {
+          id: asset.id,
+          contentType: asset.contentType,
+          description: asset.description,
+          uploadStatus: asset.uploadStatus,
+          uploadUrl: presignedUrl,
+          objectKey: asset.objectKey,
+          createdAt: asset.createdAt
+        }
+      })
+    };
 
   } catch (error) {
-    assetLogger.error('Asset creation failed', {
+    logger.error('Asset creation failed', {
       operation: 'create-asset',
       tenantId: event.requestContext?.authorizer?.tenantId || 'unknown',
       errorName: error.name,
@@ -89,19 +124,40 @@ export const handler = async (event) => {
     );
 
     if (error.name === 'ValidationError') {
-      return formatResponse(400, {
-        message: error.message,
-        details: error.details
-      });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: error.message,
+          details: error.details
+        })
+      };
     }
 
     if (error instanceof AssetSecurityError) {
-      return formatResponse(403, {
-        message: error.message,
-        violationType: error.violationType
-      });
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: error.message,
+          violationType: error.violationType
+        })
+      };
     }
 
-    return formatResponse(500, { message: 'Failed to create asset' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Failed to create asset' })
+    };
   }
 };

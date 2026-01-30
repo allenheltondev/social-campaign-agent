@@ -1,46 +1,61 @@
 import { Asset } from '../../models/asset.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
 import { logAssetOperation } from '../../utils/asset-security.mjs';
-import { assetLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
 
     if (!tenantId) {
-      return formatResponse(401, { message: 'Unauthorized: Missing tenant context' });
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized: Missing tenant context' })
+      };
     }
 
     const queryParams = event.queryStringParameters || {};
     const limit = parseInt(queryParams.limit) || 20;
     const {nextToken} = queryParams;
-    const {contentType} = queryParams;
-    const {createdAfter} = queryParams;
 
     if (limit < 1 || limit > 100) {
-      return formatResponse(400, { message: 'Limit must be between 1 and 100' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Limit must be between 1 and 100' })
+      };
     }
 
     const assetListResponse = await Asset.list(tenantId, {
       limit,
-      nextToken,
-      contentType,
-      createdAfter
+      nextToken
     });
 
     logAssetOperation(tenantId, null, 'LIST', 'SUCCESS', {
       resultCount: assetListResponse.items.length,
-      hasNextPage: assetListResponse.pagination.hasNextPage,
-      filters: { contentType, createdAfter }
+      hasNextPage: assetListResponse.pagination.hasNextPage
     });
 
-    return formatResponse(200, {
-      assets: assetListResponse.items,
-      pagination: assetListResponse.pagination
-    });
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        assets: assetListResponse.items,
+        pagination: assetListResponse.pagination
+      })
+    };
 
   } catch (error) {
-    assetLogger.error('Asset listing operation failed', {
+    logger.error('Asset listing operation failed', {
       operation: 'listAssets',
       tenantId: event.requestContext?.authorizer?.tenantId,
       errorName: error.name,
@@ -56,9 +71,23 @@ export const handler = async (event) => {
     );
 
     if (error.message === 'Invalid nextToken') {
-      return formatResponse(400, { message: 'Invalid pagination token' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Invalid pagination token' })
+      };
     }
 
-    return formatResponse(500, { message: 'Failed to list assets' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Failed to list assets' })
+    };
   }
 };

@@ -50,7 +50,8 @@ paths:
   /personas:
     get:
       summary: List personas
-      description: Retrieves a paginated list of personas for the authenticated tenant with optional filtering
+      description: Retrieves a paginated list of all personas for the authenticated tenant. Supports pagination only via limit and nextToken parameters.
+      operationId: listPersonas
       tags:
         - Personas
       parameters:
@@ -69,36 +70,8 @@ paths:
           schema:
             type: string
           description: Pagination token for retrieving the next page of results
-        - name: search
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 200
-          description: Search term to filter personas by name, role, company, or audience
-        - name: company
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 100
-          description: Filter personas by company name
-        - name: role
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 100
-          description: Filter personas by role
-        - name: primaryAudience
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [executives, professionals, consumers, technical, creative]
-          description: Filter personas by primary audience
       responses:
-        200:
+        "200":
           description: List of personas retrieved successfully
           content:
             application/json:
@@ -112,11 +85,11 @@ paths:
                   nextToken:
                     type: string
                     description: Token for retrieving the next page of results
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -131,6 +104,7 @@ paths:
         Creates a new persona with voice traits, writing habits, and opinion framework.
         Only 4 fields are required (name, role, company, primaryAudience). All other fields are optional
         and will be populated with intelligent defaults based on the primaryAudience if not provided.
+      operationId: createPersona
       tags:
         - Personas
       requestBody:
@@ -180,17 +154,19 @@ paths:
                     patterns:
                       ["Learn more", "Check it out", "Share your thoughts"]
       responses:
-        201:
+        "201":
           description: Persona created successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Persona"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -198,6 +174,29 @@ paths:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreatePersonaFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST "https://api.example.com/personas" \
+              -H "Authorization: Bearer YOUR_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"name":"Sarah Chen","role":"Product Manager","company":"TechCorp","primaryAudience":"professionals"}'
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/personas', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer YOUR_TOKEN',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: 'Sarah Chen',
+                role: 'Product Manager',
+                company: 'TechCorp',
+                primaryAudience: 'professionals'
+              })
+            });
+            const persona = await response.json();
 
   /personas/{personaId}:
     parameters:
@@ -210,22 +209,23 @@ paths:
     get:
       summary: Get persona by ID
       description: Retrieves a specific persona by its unique identifier
+      operationId: getPersona
       tags:
         - Personas
       responses:
-        200:
+        "200":
           description: Persona retrieved successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Persona"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -236,6 +236,7 @@ paths:
     put:
       summary: Update persona
       description: Updates an existing persona with new information. All fields are optional.
+      operationId: updatePersona
       tags:
         - Personas
       requestBody:
@@ -245,19 +246,19 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdatePersonaRequest"
       responses:
-        200:
+        "200":
           description: Persona updated successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Persona"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -269,18 +270,19 @@ paths:
     delete:
       summary: Delete persona
       description: Soft deletes a persona by marking it as inactive. The persona data is preserved but hidden from listings.
+      operationId: deletePersona
       tags:
         - Personas
       responses:
-        204:
+        "204":
           description: Persona deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -298,7 +300,8 @@ paths:
         description: The unique identifier of the persona
     get:
       summary: List writing examples for a persona
-      description: Retrieves a paginated list of writing examples for a specific persona
+      description: Retrieves a paginated list of all writing examples for a specific persona. Supports pagination only via limit and nextToken parameters.
+      operationId: listWritingExamples
       tags:
         - Writing Examples
       parameters:
@@ -318,7 +321,7 @@ paths:
             type: string
           description: Pagination token for retrieving the next page of results
       responses:
-        200:
+        "200":
           description: Writing examples retrieved successfully
           content:
             application/json:
@@ -332,13 +335,13 @@ paths:
                   nextToken:
                     type: string
                     description: Token for retrieving the next page of results
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -349,6 +352,7 @@ paths:
     post:
       summary: Create a writing example
       description: Creates a new writing example for a persona to help train AI style inference
+      operationId: createWritingExample
       tags:
         - Writing Examples
       requestBody:
@@ -358,19 +362,19 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateWritingExampleRequest"
       responses:
-        201:
+        "201":
           description: Writing example created successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/WritingExample"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -396,18 +400,19 @@ paths:
     delete:
       summary: Delete writing example
       description: Soft deletes a writing example by removing its content while preserving metadata
+      operationId: deleteWritingExample
       tags:
         - Writing Examples
       responses:
-        204:
+        "204":
           description: Writing example deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -426,10 +431,11 @@ paths:
     post:
       summary: Start style analysis
       description: Triggers AI-powered style analysis of the persona's writing examples to infer voice characteristics
+      operationId: startStyleAnalysis
       tags:
         - Personas
       responses:
-        202:
+        "202":
           description: Style analysis started successfully
           content:
             application/json:
@@ -443,13 +449,13 @@ paths:
                     type: string
                     description: Unique identifier for this analysis request
                     example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -460,7 +466,8 @@ paths:
   /brands:
     get:
       summary: List brands
-      description: Retrieves a paginated list of brands for the authenticated tenant with optional filtering and search
+      description: Retrieves a paginated list of all brands for the authenticated tenant. Supports pagination only via limit and nextToken parameters.
+      operationId: listBrands
       tags:
         - Brands
       parameters:
@@ -473,33 +480,12 @@ paths:
             maximum: 100
             default: 20
           description: Maximum number of brands to return
-        - name: lastEvaluatedKey
+        - name: nextToken
           in: query
           required: false
           schema:
             type: string
           description: Pagination token for retrieving the next page of results
-        - name: search
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 200
-          description: Search term to filter brands by name, ethos, or core values
-        - name: status
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [active, inactive, pending]
-          description: Filter brands by status
-        - name: primaryAudience
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [executives, professionals, consumers, technical, creative]
-          description: Filter brands by primary audience
         - name: sortOrder
           in: query
           required: false
@@ -509,7 +495,7 @@ paths:
             default: desc
           description: Sort order for results by creation date
       responses:
-        200:
+        "200":
           description: List of brands retrieved successfully
           content:
             application/json:
@@ -520,14 +506,16 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Brand"
-                  lastEvaluatedKey:
+                  nextToken:
                     type: string
                     description: Token for retrieving the next page of results
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -535,6 +523,17 @@ paths:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListBrandsFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "https://api.example.com/brands?limit=20" \
+              -H "Authorization: Bearer YOUR_TOKEN"
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/brands?limit=20', {
+              headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+            });
+            const data = await response.json();
 
     post:
       summary: Create a new brand
@@ -542,6 +541,7 @@ paths:
         Creates a new brand with identity, guidelines, and asset management.
         Only 4 fields are required (name, ethos, coreValues, primaryAudience). All other fields are optional
         and will be populated with intelligent defaults based on the primaryAudience if not provided.
+      operationId: createBrand
       tags:
         - Brands
       requestBody:
@@ -595,17 +595,19 @@ paths:
                       description: "Brand hero image for campaigns"
                       contentType: "image/jpeg"
       responses:
-        201:
+        "201":
           description: Brand created successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Brand"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -613,6 +615,29 @@ paths:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateBrandFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST "https://api.example.com/brands" \
+              -H "Authorization: Bearer YOUR_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"name":"TechCorp","ethos":"Empowering businesses","coreValues":["Innovation","Integrity"],"primaryAudience":"professionals"}'
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/brands', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer YOUR_TOKEN',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: 'TechCorp',
+                ethos: 'Empowering businesses through innovative technology',
+                coreValues: ['Innovation', 'Integrity', 'Customer Success'],
+                primaryAudience: 'professionals'
+              })
+            });
+            const brand = await response.json();
 
   /brands/{brandId}:
     parameters:
@@ -625,22 +650,23 @@ paths:
     get:
       summary: Get brand by ID
       description: Retrieves a specific brand by its unique identifier
+      operationId: getBrand
       tags:
         - Brands
       responses:
-        200:
+        "200":
           description: Brand retrieved successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Brand"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -651,6 +677,7 @@ paths:
     put:
       summary: Update brand
       description: Updates an existing brand with new information. All fields are optional.
+      operationId: updateBrand
       tags:
         - Brands
       requestBody:
@@ -660,19 +687,19 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateBrandRequest"
       responses:
-        200:
+        "200":
           description: Brand updated successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Brand"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -684,18 +711,19 @@ paths:
     delete:
       summary: Delete brand
       description: Soft deletes a brand by marking it as inactive. The brand data is preserved but hidden from listings.
+      operationId: deleteBrand
       tags:
         - Brands
       responses:
-        204:
+        "204":
           description: Brand deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -713,7 +741,8 @@ paths:
         description: The unique identifier of the brand
     get:
       summary: List brand assets
-      description: Retrieves a paginated list of assets for a specific brand
+      description: Retrieves a paginated list of all assets for a specific brand. Supports pagination only via limit and nextToken parameters.
+      operationId: listBrandAssets
       tags:
         - Brand Assets
       parameters:
@@ -726,7 +755,7 @@ paths:
             maximum: 100
             default: 20
           description: Maximum number of assets to return
-        - name: lastEvaluatedKey
+        - name: nextToken
           in: query
           required: false
           schema:
@@ -740,7 +769,7 @@ paths:
             enum: [logo, template, image, document]
           description: Filter assets by type
       responses:
-        200:
+        "200":
           description: Brand assets retrieved successfully
           content:
             application/json:
@@ -751,16 +780,16 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/BrandAsset"
-                  lastEvaluatedKey:
+                  nextToken:
                     type: string
                     description: Token for retrieving the next page of results
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -771,6 +800,7 @@ paths:
     post:
       summary: Upload brand asset
       description: Uploads a new asset for a brand to S3 and creates metadata record
+      operationId: uploadBrandAsset
       tags:
         - Brand Assets
       requestBody:
@@ -780,19 +810,19 @@ paths:
             schema:
               $ref: "#/components/schemas/UploadAssetRequest"
       responses:
-        201:
+        "201":
           description: Asset uploaded successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BrandAsset"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -818,18 +848,19 @@ paths:
     delete:
       summary: Delete brand asset
       description: Deletes an asset from S3 and removes its metadata record
+      operationId: deleteBrandAsset
       tags:
         - Brand Assets
       responses:
-        204:
+        "204":
           description: Asset deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -840,7 +871,8 @@ paths:
   /assets:
     get:
       summary: List assets
-      description: Retrieves a paginated list of internal assets for the authenticated tenant
+      description: Retrieves a paginated list of all internal assets for the authenticated tenant. Supports pagination only via limit and nextToken parameters.
+      operationId: listAssets
       tags:
         - Assets
       parameters:
@@ -859,31 +891,8 @@ paths:
           schema:
             type: string
           description: Pagination token for retrieving the next page of results
-        - name: contentType
-          in: query
-          required: false
-          schema:
-            type: string
-            enum:
-              [
-                image/jpeg,
-                image/png,
-                image/gif,
-                image/webp,
-                video/mp4,
-                video/mov,
-                video/avi,
-              ]
-          description: Filter assets by content type
-        - name: createdAfter
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date-time
-          description: Filter assets created after this timestamp
       responses:
-        200:
+        "200":
           description: Assets retrieved successfully
           content:
             application/json:
@@ -904,11 +913,11 @@ paths:
                       nextToken:
                         type: string
                         nullable: true
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -919,6 +928,7 @@ paths:
     post:
       summary: Create asset
       description: Creates a new internal asset and returns a presigned URL for upload
+      operationId: createAsset
       tags:
         - Assets
       requestBody:
@@ -928,7 +938,7 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateAssetRequest"
       responses:
-        201:
+        "201":
           description: Asset created successfully with presigned upload URL
           content:
             application/json:
@@ -961,11 +971,13 @@ paths:
                         type: string
                         format: date-time
                         description: Asset creation timestamp
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -973,6 +985,29 @@ paths:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateAssetFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST "https://api.example.com/assets" \
+              -H "Authorization: Bearer YOUR_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"contentType":"image/jpeg","description":"Product hero image","fileSize":2048576}'
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/assets', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer YOUR_TOKEN',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                contentType: 'image/jpeg',
+                description: 'Product hero image showcasing our AI dashboard',
+                fileSize: 2048576
+              })
+            });
+            const { asset } = await response.json();
+            // Upload file to asset.uploadUrl using PUT request
 
   /assets/{assetId}:
     parameters:
@@ -985,10 +1020,11 @@ paths:
     get:
       summary: Get asset
       description: Retrieves asset metadata and generates a secure access URL
+      operationId: getAsset
       tags:
         - Assets
       responses:
-        200:
+        "200":
           description: Asset retrieved successfully
           content:
             application/json:
@@ -1004,13 +1040,13 @@ paths:
                             type: string
                             nullable: true
                             description: Secure time-limited URL for asset access
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -1021,6 +1057,7 @@ paths:
     put:
       summary: Update asset
       description: Updates asset metadata (description only)
+      operationId: updateAsset
       tags:
         - Assets
       requestBody:
@@ -1030,7 +1067,7 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateAssetRequest"
       responses:
-        200:
+        "200":
           description: Asset updated successfully
           content:
             application/json:
@@ -1039,13 +1076,13 @@ paths:
                 properties:
                   asset:
                     $ref: "#/components/schemas/Asset"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -1057,18 +1094,19 @@ paths:
     delete:
       summary: Delete asset
       description: Deletes an asset and its associated S3 object
+      operationId: deleteAsset
       tags:
         - Assets
       responses:
-        204:
+        "204":
           description: Asset deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -1079,7 +1117,8 @@ paths:
   /campaigns:
     get:
       summary: List campaigns
-      description: Retrieves a paginated list of campaigns for the authenticated tenant with optional filtering
+      description: Retrieves a paginated list of all campaigns for the authenticated tenant. Supports pagination only via limit and nextToken parameters.
+      operationId: listCampaigns
       tags:
         - Campaigns
       parameters:
@@ -1092,36 +1131,14 @@ paths:
             maximum: 100
             default: 20
           description: Maximum number of campaigns to return
-        - name: lastEvaluatedKey
+        - name: nextToken
           in: query
           required: false
           schema:
             type: string
           description: Pagination token for retrieving the next page of results
-        - name: status
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [planning, generating, completed, failed, approved, published]
-          description: Filter campaigns by status
-        - name: search
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 200
-          description: Search term to filter campaigns by description or title
-        - name: sortOrder
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: desc
-          description: Sort order for results by creation date
       responses:
-        200:
+        "200":
           description: List of campaigns retrieved successfully
           content:
             application/json:
@@ -1132,17 +1149,19 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/CampaignResponse"
-                  lastEvaluatedKey:
+                  nextToken:
                     type: string
                     description: Token for retrieving the next page of results
                   count:
                     type: integer
                     description: Number of campaigns returned
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-request-validator: Validate All
       x-amazon-apigateway-integration:
@@ -1150,10 +1169,22 @@ paths:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignsFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "https://api.example.com/campaigns?status=completed&limit=20" \
+              -H "Authorization: Bearer YOUR_TOKEN"
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/campaigns?status=completed&limit=20', {
+              headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+            });
+            const data = await response.json();
 
     post:
       summary: Create campaign
       description: Creates a new social media campaign and initiates async content generation workflow
+      operationId: createCampaign
       tags:
         - Campaigns
       requestBody:
@@ -1163,7 +1194,7 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateCampaignRequest"
       responses:
-        202:
+        "202":
           description: Campaign creation initiated
           content:
             application/json:
@@ -1182,17 +1213,42 @@ paths:
                     type: string
                     description: Status message
                     example: "Campaign creation initiated"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateCampaignFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST "https://api.example.com/campaigns" \
+              -H "Authorization: Bearer YOUR_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"description":"Launch new product","personaIds":["persona_123"],"platforms":["twitter","linkedin"],"duration":{"numberOfDays":30}}'
+        - lang: JavaScript
+          source: |
+            const response = await fetch('https://api.example.com/campaigns', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer YOUR_TOKEN',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                description: 'Launch new AI product',
+                personaIds: ['persona_123'],
+                platforms: ['twitter', 'linkedin'],
+                duration: { numberOfDays: 30 }
+              })
+            });
+            const campaign = await response.json();
 
   /campaigns/{campaignId}:
     parameters:
@@ -1205,20 +1261,21 @@ paths:
     get:
       summary: Get campaign
       description: Retrieves campaign details including status and plan summary
+      operationId: getCampaign
       tags:
         - Campaigns
       responses:
-        200:
+        "200":
           description: Campaign retrieved successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CampaignResponse"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -1229,6 +1286,7 @@ paths:
     put:
       summary: Update campaign
       description: Updates an existing campaign with new information
+      operationId: updateCampaign
       tags:
         - Campaigns
       requestBody:
@@ -1238,19 +1296,19 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateCampaignRequest"
       responses:
-        200:
+        "200":
           description: Campaign updated successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CampaignResponse"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -1261,18 +1319,19 @@ paths:
     delete:
       summary: Delete campaign
       description: Soft deletes a campaign by marking it as inactive
+      operationId: deleteCampaign
       tags:
         - Campaigns
       responses:
-        204:
+        "204":
           description: Campaign deleted successfully
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
@@ -1290,11 +1349,28 @@ paths:
         description: The unique identifier of the campaign
     get:
       summary: List campaign posts
-      description: Retrieves all social media posts for a campaign
+      description: Retrieves a paginated list of all social media posts for a campaign. Supports pagination only via limit and nextToken parameters.
+      operationId: listCampaignPosts
       tags:
         - Campaigns
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of posts to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token for retrieving the next page of results
       responses:
-        200:
+        "200":
           description: Posts retrieved successfully
           content:
             application/json:
@@ -1305,286 +1381,16 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/SocialPostResponse"
-                  count:
-                    type: integer
-                    description: Number of posts returned
-        401:
+                  nextToken:
+                    type: string
+                    description: Token for retrieving the next page of results
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "500":
           $ref: "#/components/responses/UnknownError"
       x-amazon-apigateway-integration:
         uri:
           Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignPostsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-
-  /campaigns/{campaignId}/approve:
-    parameters:
-      - name: campaignId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The unique identifier of the campaign
-    post:
-      summary: Approve campaign
-      description: Approves a campaign for publication
-      tags:
-        - Campaigns
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                approved:
-                  type: boolean
-                  description: Whether the campaign is approved
-                notes:
-                  type: string
-                  description: Optional approval notes
-      responses:
-        200:
-          description: Campaign approval processed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Campaign approval processed"
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        404:
-          $ref: "#/components/responses/NotFound"
-        500:
-          $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApprovalCallbackFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-
-  /campaigns/{campaignId}/decisions:
-    parameters:
-      - name: campaignId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The unique identifier of the campaign
-    post:
-      summary: Make campaign decision
-      description: Make an approval decision for an entire campaign (approved, rejected, or needs_revision)
-      tags:
-        - Campaigns
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - decision
-              properties:
-                decision:
-                  type: string
-                  enum: [approved, rejected, needs_revision]
-                  description: The approval decision
-                comments:
-                  type: string
-                  nullable: true
-                  description: Optional comments about the decision
-      responses:
-        200:
-          description: Campaign decision processed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  campaignId:
-                    type: string
-                  decision:
-                    type: string
-                  decidedAt:
-                    type: string
-                    format: date-time
-        202:
-          description: Revision request accepted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  campaignId:
-                    type: string
-                  decision:
-                    type: string
-                  decidedAt:
-                    type: string
-                    format: date-time
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
-          $ref: "#/components/responses/Conflict"
-        500:
-          $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CampaignDecisionFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-
-  /campaigns/{campaignId}/posts/{postId}/decisions:
-    parameters:
-      - name: campaignId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The unique identifier of the campaign
-      - name: postId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The unique identifier of the post
-    post:
-      summary: Make post decision
-      description: Make an approval decision for an individual post
-      tags:
-        - Campaigns
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - decision
-              properties:
-                decision:
-                  type: string
-                  enum: [approved, rejected]
-                  description: The approval decision
-                comments:
-                  type: string
-                  nullable: true
-                  description: Optional comments about the decision
-                reason:
-                  type: string
-                  nullable: true
-                  description: Reason for rejection
-      responses:
-        200:
-          description: Post decision processed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  postId:
-                    type: string
-                  decision:
-                    type: string
-                  status:
-                    type: string
-                  decidedAt:
-                    type: string
-                    format: date-time
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
-          $ref: "#/components/responses/Conflict"
-        500:
-          $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostDecisionFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-
-  /campaigns/{campaignId}/posts/decisions:
-    parameters:
-      - name: campaignId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The unique identifier of the campaign
-    post:
-      summary: Bulk post decisions
-      description: Make decisions for multiple posts at once
-      tags:
-        - Campaigns
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - decisions
-              properties:
-                decisions:
-                  type: array
-                  minItems: 1
-                  maxItems: 25
-                  items:
-                    type: object
-                    required:
-                      - postId
-                      - decision
-                    properties:
-                      postId:
-                        type: string
-                      decision:
-                        type: string
-                        enum: [approved, rejected]
-                      comments:
-                        type: string
-                        nullable: true
-                      reason:
-                        type: string
-                        nullable: true
-      responses:
-        200:
-          description: Bulk decisions processed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  successCount:
-                    type: integer
-                  failureCount:
-                    type: integer
-                  results:
-                    type: array
-                    items:
-                      type: object
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        500:
-          $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BulkPostDecisionsFunction.Arn}/invocations
         httpMethod: POST
         type: aws_proxy
 
@@ -1696,6 +1502,37 @@ components:
                 details:
                   maxSize: 10485760
                   actualSize: 15728640
+    TooManyRequests:
+      description: Rate limit exceeded. Too many requests in a given time period.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "Rate limit exceeded. Please try again later."
+            errorCode: "RATE_LIMIT_EXCEEDED"
+            errorId: "1703123456789-ratelimit123"
+            details:
+              retryAfter: 60
+              limit: 100
+              window: "1 minute"
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per time window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in current window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when the rate limit resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
     UnknownError:
       description: An unexpected error occurred on the server.
       content:
@@ -1745,6 +1582,7 @@ components:
             - BRAND_FILE_TOO_LARGE
             - BRAND_TENANT_ISOLATION_VIOLATION
             - BRAND_INTERNAL_ERROR
+            - RATE_LIMIT_EXCEEDED
           example: "BRAND_NOT_FOUND"
         errorId:
           type: string
@@ -3242,49 +3080,3 @@ components:
           maxLength: 500
           description: Updated asset description
           example: "Updated product hero image showcasing our enhanced AI analytics dashboard"
-
-    ExternalAsset:
-      type: object
-      required:
-        - type
-        - url
-        - description
-        - contentType
-        - addedAt
-      properties:
-        type:
-          type: string
-          enum: [external]
-          description: Asset type for external assets
-          example: "external"
-        url:
-          type: string
-          format: uri
-          pattern: "^https://"
-          description: HTTPS URL of the external asset
-          example: "https://example.com/images/product-hero.jpg"
-        description:
-          type: string
-          minLength: 10
-          maxLength: 500
-          description: Asset description explaining content and purpose
-          example: "External product image from company website"
-        contentType:
-          type: string
-          enum:
-            [
-              image/jpeg,
-              image/png,
-              image/gif,
-              image/webp,
-              video/mp4,
-              video/mov,
-              video/avi,
-            ]
-          description: MIME type of the external asset
-          example: "image/jpeg"
-        addedAt:
-          type: string
-          format: date-time
-          description: When the external asset was added to the campaign
-          example: "2024-01-15T10:30:00Z"

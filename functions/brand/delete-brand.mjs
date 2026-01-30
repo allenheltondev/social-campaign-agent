@@ -1,33 +1,69 @@
 import { Brand } from '../../models/brand.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { createStandardizedError, BrandError, BrandErrorCodes } from '../../utils/error-handler.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
-  const operation = 'delete-brand';
-
   try {
     const { tenantId } = event.requestContext.authorizer;
     const { brandId } = event.pathParameters;
 
     if (!tenantId) {
-      throw new BrandError('Unauthorized', BrandErrorCodes.UNAUTHORIZED, 401);
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Unauthorized' })
+      };
     }
 
     if (!brandId) {
-      throw new BrandError('Missing brandId parameter', BrandErrorCodes.VALIDATION_ERROR, 400);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing brandId parameter' })
+      };
     }
 
     const updatedBrand = await Brand.update(tenantId, brandId, { status: 'archived' });
 
     if (!updatedBrand) {
-      throw new BrandError('Brand not found', BrandErrorCodes.NOT_FOUND, 404);
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Brand not found' })
+      };
     }
 
-    return formatResponse(204);
+    return {
+      statusCode: 204,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: ''
+    };
   } catch (error) {
-    return createStandardizedError(error, operation, {
+    logger.error('Delete brand operation failed', {
+      operation: 'deleteBrand',
       tenantId: event.requestContext?.authorizer?.tenantId,
-      brandId: event.pathParameters?.brandId
+      brandId: event.pathParameters?.brandId,
+      errorName: error.name,
+      errorMessage: error.message
     });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };

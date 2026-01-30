@@ -1,7 +1,7 @@
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Asset } from '../models/asset.mjs';
-import { utilLogger } from './logger.mjs';
+import { logger } from './logger.mjs';
 
 const s3Client = new S3Client();
 
@@ -49,7 +49,7 @@ export class AssetResolver {
         throw new Error(`Unsupported asset type: ${asset.type}`);
       }
     } catch (error) {
-      utilLogger.error('Asset resolution failed', {
+      logger.error('Asset resolution failed', {
         operation: 'resolveAssetAccess',
         tenantId,
         assetType: asset.type,
@@ -131,7 +131,7 @@ export class AssetResolver {
 
       return null;
     } catch (error) {
-      utilLogger.error('Asset metadata retrieval failed', {
+      logger.error('Asset metadata retrieval failed', {
         operation: 'getAssetMetadata',
         tenantId,
         assetType: asset.type,
@@ -172,7 +172,7 @@ export class AssetResolver {
 
       return { success: false, error: 'Unsupported asset type' };
     } catch (error) {
-      utilLogger.error('Asset utilization tracking failed', {
+      logger.error('Asset utilization tracking failed', {
         operation: 'trackAssetUtilization',
         tenantId,
         assetType: asset.type,

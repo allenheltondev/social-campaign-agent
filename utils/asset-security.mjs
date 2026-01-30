@@ -1,6 +1,6 @@
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { utilLogger } from './logger.mjs';
+import { logger } from './logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -61,7 +61,7 @@ export const validateTenantOwnership = async (tenantId, assetId) => {
       throw error;
     }
 
-    utilLogger.error('Tenant ownership validation failed', {
+    logger.error('Tenant ownership validation failed', {
       operation: 'validate-tenant-ownership',
       tenantId,
       assetId,
@@ -195,7 +195,7 @@ export const generateSecureSignedUrl = async (s3Client, bucket, objectKey, opera
 
     return signedUrl;
   } catch (error) {
-    utilLogger.error('Signed URL generation failed', {
+    logger.error('Signed URL generation failed', {
       operation: 'generate-signed-url',
       objectKey,
       errorName: error.name,
@@ -225,12 +225,12 @@ export const logAssetAccess = (tenantId, assetId, operation, result, violationTy
   }
 
   if (result !== 'SUCCESS') {
-    utilLogger.error('Asset access denied', logData);
+    logger.error('Asset access denied', logData);
   }
 };
 
 export const logSecurityViolation = (violationType, details) => {
-  utilLogger.error('Security violation detected', {
+  logger.error('Security violation detected', {
     operation: 'security-violation',
     eventType: 'SECURITY_VIOLATION',
     violationType,
@@ -255,6 +255,6 @@ export const logAssetOperation = (tenantId, assetId, operation, result, metadata
   };
 
   if (result !== 'SUCCESS') {
-    utilLogger.error('Asset operation failed', logData);
+    logger.error('Asset operation failed', logData);
   }
 };

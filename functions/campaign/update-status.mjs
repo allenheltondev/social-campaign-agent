@@ -6,8 +6,7 @@ import {
   createErrorTracking,
   CAMPAIGN_STATUSES
 } from '../../utils/campaign-status.mjs';
-import { formatResponse } from '../../utils/api-response.mjs';
-import { campaignLogger } from '../../utils/logger.mjs';
+import { logger } from '../../utils/logger.mjs';
 
 export const handler = async (event) => {
   try {
@@ -15,27 +14,41 @@ export const handler = async (event) => {
     const { campaignId, tenantId, newStatus, reason, error } = detail;
 
     if (!campaignId || !tenantId) {
-      campaignLogger.error('Missing required parameters for campaign status update', {
+      logger.error('Missing required parameters for campaign status update', {
         operation: 'update-campaign-status',
         campaignId,
         tenantId,
         errorName: 'ValidationError',
         errorMessage: 'Missing required parameters'
       });
-      return formatResponse(400, { message: 'Missing required parameters' });
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required parameters' })
+      };
     }
 
     const campaign = await Campaign.findById(tenantId, campaignId);
 
     if (!campaign) {
-      campaignLogger.error('Campaign not found for status update', {
+      logger.error('Campaign not found for status update', {
         operation: 'update-campaign-status',
         tenantId,
         campaignId,
         errorName: 'NotFoundError',
         errorMessage: 'Campaign not found'
       });
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
     const currentStatus = campaign.status;
 
@@ -47,11 +60,18 @@ export const handler = async (event) => {
     }
 
     if (!targetStatus || targetStatus === currentStatus) {
-      return formatResponse(200, {
-        message: 'No status change required',
-        currentStatus,
-        targetStatus
-      });
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: 'No status change required',
+          currentStatus,
+          targetStatus
+        })
+      };
     }
 
     const now = new Date().toISOString();
@@ -77,7 +97,14 @@ export const handler = async (event) => {
     const updatedCampaign = await Campaign.update(tenantId, campaignId, updateData);
 
     if (!updatedCampaign) {
-      return formatResponse(404, { message: 'Campaign not found' });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
     await publishStatusTransition(
@@ -89,15 +116,22 @@ export const handler = async (event) => {
       error
     );
 
-    return formatResponse(200, {
-      campaignId,
-      fromStatus: currentStatus,
-      toStatus: targetStatus,
-      updatedAt: now
-    });
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        campaignId,
+        fromStatus: currentStatus,
+        toStatus: targetStatus,
+        updatedAt: now
+      })
+    };
 
   } catch (err) {
-    campaignLogger.error('Update campaign status operation failed', {
+    logger.error('Update campaign status operation failed', {
       operation: 'update-campaign-status',
       tenantId: event.detail?.tenantId,
       campaignId: event.detail?.campaignId,
@@ -106,12 +140,26 @@ export const handler = async (event) => {
     });
 
     if (err.name === 'ConditionalCheckFailedException') {
-      return formatResponse(409, {
-        message: 'Campaign was modified by another process. Please retry.'
-      });
+      return {
+        statusCode: 409,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          message: 'Campaign was modified by another process. Please retry.'
+        })
+      };
     }
 
-    return formatResponse(500, { message: 'Internal server error' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ message: 'Internal server error' })
+    };
   }
 };
 

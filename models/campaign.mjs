@@ -5,23 +5,14 @@ import { ulid } from 'ulid';
 import { Brand } from './brand.mjs';
 import { Persona } from './persona.mjs';
 import { Asset, ExternalAssetSchema } from './asset.mjs';
-import { campaignLogger } from '../utils/logger.mjs';
+import { logger } from '../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
 const ObjectiveSchema = z.enum(['awareness', 'education', 'conversion', 'event', 'launch']);
 const PlatformSchema = z.enum(['twitter', 'linkedin', 'instagram', 'facebook']);
-const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled', 'awaiting_review', 'approved', 'rejected', 'approval_timeout', 'needs_revision']);
+const StatusSchema = z.enum(['planning', 'generating', 'completed', 'failed', 'cancelled']);
 
-const ApprovalStatusSchema = z.enum(['pending', 'awaiting_review', 'approved', 'rejected', 'needs_revision', 'approval_timeout']);
-
-const ApprovalMetadataSchema = z.object({
-  status: ApprovalStatusSchema,
-  submittedAt: z.string().datetime().nullable(),
-  reviewedAt: z.string().datetime().nullable(),
-  approvedPostCount: z.number().int().min(0),
-  totalPostCount: z.number().int().min(0)
-}).nullable();
 const DayOfWeekSchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
 
 const CTASchema = z.object({
@@ -165,8 +156,6 @@ export const CampaignSchema = z.object({
   assetPool: AssetPoolSchema.optional(),
   assetPoolStats: AssetPoolStatsSchema.optional(),
   status: StatusSchema,
-  approval: ApprovalMetadataSchema.optional(),
-  callbackId: z.string().nullable().optional(),
   planSummary: z.object({
     totalPosts: z.number().int().min(0),
     postsPerPlatform: z.record(z.number().int().min(0)),
@@ -180,40 +169,6 @@ export const CampaignSchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   completedAt: z.iso.datetime().nullable().optional()
-});
-
-export const CampaignDTOSchema = CampaignSchema.omit({ tenantId: true });
-
-export const CreateCampaignRequestSchema = z.object({
-  name: z.string().min(1).max(200),
-  brandId: z.string().nullable().optional(),
-  brief: z.object({
-    description: z.string().min(10).max(2000),
-    objective: ObjectiveSchema,
-    primaryCTA: CTASchema
-  }).refine(
-    (data) => {
-      const requiresCTA = ['conversion', 'event'].includes(data.objective);
-      return !requiresCTA || data.primaryCTA;
-    },
-    { message: 'Primary CTA is required for conversion and event objectives' }
-  ),
-  participants: z.object({
-    personaIds: z.array(z.string()).min(1).max(10),
-    platforms: z.array(PlatformSchema).min(1),
-    distribution: DistributionSchema.nullable()
-  }),
-  schedule: ScheduleSchema,
-  cadenceOverrides: CadenceOverridesSchema.nullable(),
-  messaging: MessagingSchema.nullable(),
-  assetOverrides: AssetOverridesSchema.nullable(),
-  assets: z.array(CampaignAssetSchema).nullable().optional(),
-  previewAssets: z.boolean().optional(),
-  blendSchedule: z.boolean().optional().default(false),
-  metadata: z.object({
-    source: z.enum(['wizard', 'api', 'import']).default('api'),
-    externalRef: z.string().nullable()
-  }).nullable()
 });
 
 export const validateRequestBody = (schema, body) => {
@@ -299,26 +254,6 @@ export class Campaign {
     return { valid: true, validatedAssets };
   }
 
-  static validateEntity(campaign) {
-    try {
-      return CampaignSchema.parse(campaign);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Campaign validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
-
   static async save(tenantId, campaign) {
     try {
       const now = new Date().toISOString();
@@ -333,7 +268,6 @@ export class Campaign {
         ...campaign,
         tenantId,
         assets: validatedAssets.length > 0 ? validatedAssets : null,
-        approval: campaign.approval || null,
         planSummary: campaign.planSummary || null,
         lastError: campaign.lastError || null,
         completedAt: campaign.completedAt || null,
@@ -341,8 +275,8 @@ export class Campaign {
         updatedAt: now
       };
 
-      const validatedCampaign = this.validateEntity(campaignWithDefaults);
-      const campaignData = this._transformToDynamoDB(tenantId, validatedCampaign);
+      const validatedCampaign = CampaignSchema.parse(campaignWithDefaults);
+      const campaignData = this.toDynamoDB(tenantId, validatedCampaign);
 
       await ddb.send(new PutItemCommand({
         TableName: process.env.TABLE_NAME,
@@ -350,9 +284,9 @@ export class Campaign {
         ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)'
       }));
 
-      return this._transformFromDynamoDB(campaignData);
+      return this.fromDynamoDB(campaignData);
     } catch (error) {
-      campaignLogger.error('Campaign save failed', {
+      logger.error('Campaign save failed', {
         operation: 'save',
         tenantId,
         campaignId: campaign.id,
@@ -381,9 +315,9 @@ export class Campaign {
       }
 
       const rawCampaign = unmarshall(response.Item);
-      return this._transformFromDynamoDB(rawCampaign);
+      return this.fromDynamoDB(rawCampaign);
     } catch (error) {
-      campaignLogger.error('Campaign retrieval failed', {
+      logger.error('Campaign retrieval failed', {
         operation: 'findById',
         tenantId,
         campaignId,
@@ -394,7 +328,7 @@ export class Campaign {
     }
   }
 
-  static _transformFromDynamoDB(rawCampaign) {
+  static fromDynamoDB(rawCampaign) {
     const cleanCampaign = { ...rawCampaign };
 
     delete cleanCampaign.pk;
@@ -403,16 +337,12 @@ export class Campaign {
     delete cleanCampaign.GSI1SK;
     delete cleanCampaign.tenantId;
 
-    if (cleanCampaign.approval === null || cleanCampaign.approval === undefined) {
-      delete cleanCampaign.approval;
-    }
-
     cleanCampaign.id = cleanCampaign.id || rawCampaign.pk?.split('#')[1];
 
-    return CampaignDTOSchema.parse(cleanCampaign);
+    return CampaignSchema.omit({ tenantId: true }).parse(cleanCampaign);
   }
 
-  static _transformToDynamoDB(tenantId, campaign) {
+  static toDynamoDB(tenantId, campaign) {
     const now = new Date().toISOString();
 
     return {
@@ -442,35 +372,14 @@ export class Campaign {
     };
   }
 
-  static validateUpdateData(updateData) {
+  static async update(tenantId, campaignId, updateData) {
     try {
-      const updateSchema = CampaignSchema.omit({
+      const validatedUpdateData = CampaignSchema.omit({
         id: true,
         tenantId: true,
         createdAt: true,
         updatedAt: true
-      }).partial();
-      return updateSchema.parse(updateData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationErrors = (error.errors || []).map(e => ({
-          field: (e.path || []).join('.'),
-          message: e.message || 'Validation failed',
-          code: e.code || 'invalid'
-        }));
-        const errorMessage = `Campaign update validation error: ${validationErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`;
-        const validationError = new Error(errorMessage);
-        validationError.name = 'ValidationError';
-        validationError.details = { errors: validationErrors };
-        throw validationError;
-      }
-      throw error;
-    }
-  }
-
-  static async update(tenantId, campaignId, updateData) {
-    try {
-      const validatedUpdateData = this.validateUpdateData(updateData);
+      }).partial().parse(updateData);
       const now = new Date().toISOString();
       const updateDataWithTimestamp = { ...validatedUpdateData, updatedAt: now };
 
@@ -503,7 +412,7 @@ export class Campaign {
       const updatedCampaign = await this.findById(tenantId, campaignId);
       return updatedCampaign;
     } catch (error) {
-      campaignLogger.error('Campaign update failed', {
+      logger.error('Campaign update failed', {
         operation: 'update',
         tenantId,
         campaignId,
@@ -520,7 +429,7 @@ export class Campaign {
   static async list(tenantId, options = {}) {
     try {
       const { QueryCommand } = await import('@aws-sdk/client-dynamodb');
-      const { limit = 20, nextToken, status, brandId, personaId } = options;
+      const { limit = 20, nextToken } = options;
 
       let exclusiveStartKey;
       if (nextToken) {
@@ -531,52 +440,22 @@ export class Campaign {
         }
       }
 
-      const statusArray = status ? (Array.isArray(status) ? status : [status]) : null;
-      const hasStatusFilter = statusArray && statusArray.length > 0;
-
-      const expressionAttributeValues = {
-        ':tenantId': tenantId,
-        ':campaignPrefix': 'CAMPAIGN#'
-      };
-
-      let filterExpression;
-      let expressionAttributeNames;
-
-      if (hasStatusFilter) {
-        const statusPlaceholders = statusArray.map((_, index) => `:status${index}`).join(', ');
-        filterExpression = `#status IN (${statusPlaceholders})`;
-        expressionAttributeNames = { '#status': 'status' };
-
-        statusArray.forEach((statusValue, index) => {
-          expressionAttributeValues[`:status${index}`] = statusValue;
-        });
-      }
-
       const response = await ddb.send(new QueryCommand({
         TableName: process.env.TABLE_NAME,
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :tenantId AND begins_with(GSI1SK, :campaignPrefix)',
-        FilterExpression: filterExpression,
-        ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: marshall(expressionAttributeValues),
+        ExpressionAttributeValues: marshall({
+          ':tenantId': tenantId,
+          ':campaignPrefix': 'CAMPAIGN#'
+        }),
         Limit: limit,
         ExclusiveStartKey: exclusiveStartKey ? marshall(exclusiveStartKey) : undefined
       }));
 
-      let campaigns = response.Items?.map(item => {
+      const campaigns = response.Items?.map(item => {
         const rawCampaign = unmarshall(item);
-        return this._transformFromDynamoDB(rawCampaign);
+        return this.fromDynamoDB(rawCampaign);
       }) || [];
-
-      if (brandId) {
-        campaigns = campaigns.filter(campaign => campaign.brandId === brandId);
-      }
-
-      if (personaId) {
-        campaigns = campaigns.filter(campaign =>
-          campaign.participants.personaIds.includes(personaId)
-        );
-      }
 
       const campaignListResponse = {
         items: campaigns,
@@ -591,7 +470,7 @@ export class Campaign {
 
       return campaignListResponse;
     } catch (error) {
-      campaignLogger.error('Campaign list failed', {
+      logger.error('Campaign list failed', {
         operation: 'list',
         tenantId,
         errorName: error.name,
@@ -601,3 +480,4 @@ export class Campaign {
     }
   }
 }
+

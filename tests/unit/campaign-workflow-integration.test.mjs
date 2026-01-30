@@ -68,7 +68,7 @@ describe('Campaign Workflow Integration Property Tests', () => {
   const campaignArb = fc.record({
     id: campaignIdArb,
     name: fc.string({ minLength: 5, maxLength: 100 }),
-    status: fc.constantFrom('planning', 'generating', 'awaiting_review', 'approved'),
+    status: fc.constantFrom('planning', 'generating', 'completed', 'failed'),
     assets: fc.option(fc.array(campaignAssetArb, { minLength: 0, maxLength: 5 }))
   });
 

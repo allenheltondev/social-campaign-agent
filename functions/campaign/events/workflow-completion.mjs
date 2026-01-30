@@ -6,7 +6,7 @@ import {
   createErrorTracking,
   CAMPAIGN_STATUSES
 } from '../../../utils/campaign-status.mjs';
-import { campaignLogger } from '../../../utils/logger.mjs';
+import { logger } from '../../../utils/logger.mjs';
 
 const ddb = new DynamoDBClient();
 
@@ -16,14 +16,21 @@ export const handler = async (event) => {
     const { campaignId, tenantId, workflowType, success, error, postResults } = detail;
 
     if (!campaignId || !tenantId) {
-      campaignLogger.error('Missing required parameters in event detail', {
+      logger.error('Missing required parameters in event detail', {
         operation: 'workflow-completion',
         campaignId,
         tenantId,
         errorName: 'ValidationError',
         errorMessage: 'Missing required parameters'
       });
-      return { statusCode: 400, body: JSON.stringify({ message: 'Missing required parameters' }) };
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Missing required parameters' })
+      };
     }
 
     const pk = `${tenantId}#${campaignId}`;
@@ -35,21 +42,35 @@ export const handler = async (event) => {
     }));
 
     if (!getResponse.Item) {
-      campaignLogger.error('Campaign not found for workflow completion', {
+      logger.error('Campaign not found for workflow completion', {
         operation: 'workflow-completion',
         campaignId,
         tenantId,
         errorName: 'NotFoundError',
         errorMessage: 'Campaign not found'
       });
-      return { statusCode: 404, body: JSON.stringify({ message: 'Campaign not found' }) };
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not found' })
+      };
     }
 
     const campaign = unmarshall(getResponse.Item);
     const currentStatus = campaign.status;
 
     if (currentStatus !== CAMPAIGN_STATUSES.GENERATING) {
-      return { statusCode: 200, body: JSON.stringify({ message: 'Campaign not in generating status' }) };
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'Campaign not in generating status' })
+      };
     }
 
     let targetStatus;
@@ -81,7 +102,14 @@ export const handler = async (event) => {
     }
 
     if (!targetStatus || targetStatus === currentStatus) {
-      return { statusCode: 200, body: JSON.stringify({ message: 'No status change required' }) };
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({ message: 'No status change required' })
+      };
     }
 
     const now = new Date().toISOString();
@@ -142,6 +170,10 @@ export const handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         campaignId,
         fromStatus: currentStatus,
@@ -151,7 +183,7 @@ export const handler = async (event) => {
     };
 
   } catch (err) {
-    campaignLogger.error('Workflow completion handler failed', {
+    logger.error('Workflow completion handler failed', {
       operation: 'workflow-completion',
       campaignId: event.detail?.campaignId,
       tenantId: event.detail?.tenantId,
@@ -162,12 +194,20 @@ export const handler = async (event) => {
     if (err.name === 'ConditionalCheckFailedException') {
       return {
         statusCode: 409,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({ message: 'Campaign was modified by another process' })
       };
     }
 
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ message: 'Internal server error' })
     };
   }
@@ -186,7 +226,7 @@ async function getCampaignPosts(tenantId, campaignId) {
 
     return response.Items ? response.Items.map(item => unmarshall(item)) : [];
   } catch (error) {
-    campaignLogger.error('Error fetching campaign posts', {
+    logger.error('Error fetching campaign posts', {
       operation: 'get-campaign-posts',
       tenantId,
       campaignId,
