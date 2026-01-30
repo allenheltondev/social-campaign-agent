@@ -1,0 +1,71 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.js"
+      - "**.mjs"
+      - "**.ts"
+      - "**.rs"
+      - "package.json"
+      - "package-lock.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/main.yml"
+
+jobs:
+  lint-and-test-js:
+    name: Lint and Test JavaScript
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint:check
+
+      - name: Run unit tests
+        run: npm test
+
+  lint-and-test-rust:
+    name: Lint and Test Rust
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+
+      - name: Check formatting
+        run: npm run fmt:rust
+
+      - name: Run Clippy
+        run: npm run lint:rust
+
+      - name: Run tests
+        run: npm run test:rust

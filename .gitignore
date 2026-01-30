@@ -40,3 +40,9 @@ coverage/
 # AWS
 .aws/
 samconfig.toml
+
+# Rust
+**/target/
+**/*.rs.bk
+**/Cargo.lock
+*.pdb

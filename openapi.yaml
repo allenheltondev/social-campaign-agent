@@ -7,33 +7,6 @@ info:
     writing habits, and example content for AI-powered content generation.
   version: 1.0.0
 
-security:
-  - PersonaAuthorizer: []
-
-x-amazon-apigateway-request-validators:
-  Validate All:
-    validateRequestParameters: true
-    validateRequestBody: true
-x-amazon-apigateway-gateway-responses:
-  BAD_REQUEST_BODY:
-    statusCode: 400
-    responseTemplates:
-      application/json: '{ "message": "$context.error.validationErrorString" }'
-    responseParameters:
-      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
-      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
-  DEFAULT_4XX:
-    responseParameters:
-      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
-      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
-  DEFAULT_5XX:
-    responseParameters:
-      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
-      gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-      gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
-
 tags:
   - name: Personas
     description: Persona management operations
@@ -91,12 +64,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListPersonasFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     post:
       summary: Create a new persona
@@ -168,35 +135,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreatePersonaFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST "https://api.example.com/personas" \
-              -H "Authorization: Bearer YOUR_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"name":"Sarah Chen","role":"Product Manager","company":"TechCorp","primaryAudience":"professionals"}'
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/personas', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer YOUR_TOKEN',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name: 'Sarah Chen',
-                role: 'Product Manager',
-                company: 'TechCorp',
-                primaryAudience: 'professionals'
-              })
-            });
-            const persona = await response.json();
 
   /personas/{personaId}:
     parameters:
@@ -227,11 +165,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetPersonaFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     put:
       summary: Update persona
@@ -260,12 +193,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdatePersonaFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     delete:
       summary: Delete persona
@@ -284,11 +211,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeletePersonaFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /personas/{personaId}/examples:
     parameters:
@@ -343,11 +265,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListExamplesFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     post:
       summary: Create a writing example
@@ -376,12 +293,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateExampleFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /personas/{personaId}/examples/{exampleId}:
     parameters:
@@ -414,11 +325,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteExampleFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /personas/{personaId}/analyze:
     parameters:
@@ -457,11 +363,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${StartStyleAnalysisFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /brands:
     get:
@@ -517,23 +418,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListBrandsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "https://api.example.com/brands?limit=20" \
-              -H "Authorization: Bearer YOUR_TOKEN"
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/brands?limit=20', {
-              headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
-            });
-            const data = await response.json();
 
     post:
       summary: Create a new brand
@@ -609,35 +493,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateBrandFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST "https://api.example.com/brands" \
-              -H "Authorization: Bearer YOUR_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"name":"TechCorp","ethos":"Empowering businesses","coreValues":["Innovation","Integrity"],"primaryAudience":"professionals"}'
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/brands', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer YOUR_TOKEN',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name: 'TechCorp',
-                ethos: 'Empowering businesses through innovative technology',
-                coreValues: ['Innovation', 'Integrity', 'Customer Success'],
-                primaryAudience: 'professionals'
-              })
-            });
-            const brand = await response.json();
 
   /brands/{brandId}:
     parameters:
@@ -668,11 +523,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetBrandFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     put:
       summary: Update brand
@@ -701,12 +551,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateBrandFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     delete:
       summary: Delete brand
@@ -725,11 +569,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteBrandFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /brands/{brandId}/assets:
     parameters:
@@ -791,11 +630,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListAssetsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     post:
       summary: Upload brand asset
@@ -824,12 +658,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /brands/{brandId}/assets/{assetId}:
     parameters:
@@ -862,11 +690,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /assets:
     get:
@@ -919,11 +742,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListAssetsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     post:
       summary: Create asset
@@ -979,35 +797,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST "https://api.example.com/assets" \
-              -H "Authorization: Bearer YOUR_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"contentType":"image/jpeg","description":"Product hero image","fileSize":2048576}'
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/assets', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer YOUR_TOKEN',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                contentType: 'image/jpeg',
-                description: 'Product hero image showcasing our AI dashboard',
-                fileSize: 2048576
-              })
-            });
-            const { asset } = await response.json();
-            // Upload file to asset.uploadUrl using PUT request
 
   /assets/{assetId}:
     parameters:
@@ -1048,11 +837,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     put:
       summary: Update asset
@@ -1084,12 +868,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     delete:
       summary: Delete asset
@@ -1108,11 +886,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteAssetFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /campaigns:
     get:
@@ -1163,23 +936,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-request-validator: Validate All
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "https://api.example.com/campaigns?status=completed&limit=20" \
-              -H "Authorization: Bearer YOUR_TOKEN"
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/campaigns?status=completed&limit=20', {
-              headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
-            });
-            const data = await response.json();
 
     post:
       summary: Create campaign
@@ -1221,34 +977,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateCampaignFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST "https://api.example.com/campaigns" \
-              -H "Authorization: Bearer YOUR_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"description":"Launch new product","personaIds":["persona_123"],"platforms":["twitter","linkedin"],"duration":{"numberOfDays":30}}'
-        - lang: JavaScript
-          source: |
-            const response = await fetch('https://api.example.com/campaigns', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer YOUR_TOKEN',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                description: 'Launch new AI product',
-                personaIds: ['persona_123'],
-                platforms: ['twitter', 'linkedin'],
-                duration: { numberOfDays: 30 }
-              })
-            });
-            const campaign = await response.json();
 
   /campaigns/{campaignId}:
     parameters:
@@ -1277,11 +1005,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetCampaignFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     put:
       summary: Update campaign
@@ -1310,11 +1033,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateCampaignFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
     delete:
       summary: Delete campaign
@@ -1333,11 +1051,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteCampaignFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
 
   /campaigns/{campaignId}/posts:
     parameters:
@@ -1388,12 +1101,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/UnknownError"
-      x-amazon-apigateway-integration:
-        uri:
-          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListCampaignPostsFunction.Arn}/invocations
-        httpMethod: POST
-        type: aws_proxy
-
+      
 components:
   responses:
     BadRequest:

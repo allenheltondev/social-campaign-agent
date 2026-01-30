@@ -1,0 +1,64 @@
+[package]
+name = "campaign-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+aws-sdk-dynamodb = "1.52"
+aws-sdk-s3 = "1.52"
+aws-sdk-eventbridge = "1.52"
+aws_lambda_events = { version = "0.15", default-features = false, features = ["apigw"] }
+lambda_runtime = "0.13"
+lambda-lw-http-router = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_dynamo = { version = "4", features = ["aws-sdk-dynamodb+1"] }
+tokio = { version = "1", features = ["macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+ulid = "1.1"
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = "9.3"
+base64 = "0.22"
+async-trait = "0.1"
+http = "1.0"
+
+[[bin]]
+name = "api-router"
+path = "api/src/main.rs"
+
+[lib]
+name = "campaign_api"
+path = "api/src/lib.rs"
+
+[[test]]
+name = "personas_use_case_test"
+path = "api/tests/personas_use_case_test.rs"
+
+[[test]]
+name = "brands_use_case_test"
+path = "api/tests/brands_use_case_test.rs"
+
+[[test]]
+name = "campaigns_use_case_test"
+path = "api/tests/campaigns_use_case_test.rs"
+
+[[test]]
+name = "assets_use_case_test"
+path = "api/tests/assets_use_case_test.rs"
+
+[[test]]
+name = "request_ctx_test"
+path = "api/tests/request_ctx_test.rs"
+
+[[test]]
+name = "serialization_test"
+path = "api/tests/serialization_test.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

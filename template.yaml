@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Persona Management API - REST API for managing personas and writing examples
 
@@ -121,17 +121,17 @@ Resources:
         DefaultAuthorizer: Authorizer
         AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
-         Authorizer:
-          FunctionPayloadType: REQUEST
-          FunctionArn: !If [CreateInternalAuthorizer, !GetAtt AuthorizerFunction.Arn, !Ref AuthorizerArn ]
-          Identity:
-            Headers:
-              - Authorization
-      DefinitionBody:
-        Fn::Transform:
-          Name: AWS::Include
-          Parameters:
-            Location: ./openapi.yaml
+          Authorizer:
+            FunctionPayloadType: REQUEST
+            FunctionArn:
+              !If [
+                CreateInternalAuthorizer,
+                !GetAtt AuthorizerFunction.Arn,
+                !Ref AuthorizerArn,
+              ]
+            Identity:
+              Headers:
+                - Authorization
 
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -201,72 +201,17 @@ Resources:
       SupportedIdentityProviders:
         - COGNITO
 
-  CreatePersonaFunction:
+  ApiRouterFunction:
     Type: AWS::Serverless::Function
     Metadata:
-      BuildMethod: esbuild
+      BuildMethod: rust-cargolambda
       BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/create-persona.mjs
+        Binary: api-router
     Properties:
-      Handler: persona/create-persona.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:PutItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        CreatePersona:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas
-            Method: POST
-
-  GetPersonaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/get-persona.mjs
-    Properties:
-      Handler: persona/get-persona.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:GetItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        GetPersona:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}
-            Method: GET
-
-  UpdatePersonaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/update-persona.mjs
-    Properties:
-      Handler: persona/update-persona.handler
+      Runtime: provided.al2023
+      Handler: bootstrap
+      CodeUri: .
+      Timeout: 25
       Policies:
         - AWSLambdaBasicExecutionRole
         - Version: 2012-10-17
@@ -274,197 +219,36 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        UpdatePersona:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}
-            Method: PUT
-
-  DeletePersonaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/delete-persona.mjs
-    Properties:
-      Handler: persona/delete-persona.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        DeletePersona:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}
-            Method: DELETE
-
-  ListPersonasFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/list-personas.mjs
-    Properties:
-      Handler: persona/list-personas.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListPersonas:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas
-            Method: GET
-
-  CreateExampleFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/examples/create-example.mjs
-    Properties:
-      Handler: persona/examples/create-example.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
                 - dynamodb:PutItem
-              Resource:
-                - !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        CreateExample:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}/examples
-            Method: POST
-
-  ListExamplesFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/examples/list-examples.mjs
-    Properties:
-      Handler: persona/examples/list-examples.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+                - dynamodb:BatchGetItem
               Resource:
                 - !GetAtt PersonaTable.Arn
                 - !Sub "${PersonaTable.Arn}/index/GSI1"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        GetExamples:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}/examples
-            Method: GET
-
-  DeleteExampleFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/examples/delete-example.mjs
-    Properties:
-      Handler: persona/examples/delete-example.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        DeleteExample:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}/examples/{exampleId}
-            Method: DELETE
-
-  StartStyleAnalysisFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - persona/start-style-analysis.mjs
-    Properties:
-      Handler: persona/start-style-analysis.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
             - Effect: Allow
               Action:
-                - dynamodb:GetItem
-                - dynamodb:Query
-              Resource: !GetAtt PersonaTable.Arn
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub "${BrandAssetsBucket.Arn}/*"
+                - !Sub "${AssetsBucket.Arn}/*"
             - Effect: Allow
               Action: events:PutEvents
               Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
       Environment:
         Variables:
           TABLE_NAME: !Ref PersonaTable
+          BRAND_ASSETS_BUCKET: !Ref BrandAssetsBucket
+          ASSETS_BUCKET: !Ref AssetsBucket
+          EVENT_BUS_NAME: default
       Events:
-        TriggerAnalysis:
+        ApiProxy:
           Type: Api
           Properties:
             RestApiId: !Ref CampaignApi
-            Path: /personas/{personaId}/analyze
-            Method: POST
+            Path: /{proxy+}
+            Method: ANY
 
   StyleInferenceFunction:
     Type: AWS::Serverless::Function
@@ -604,277 +388,6 @@ Resources:
               - "ETag"
             MaxAge: 3000
 
-  CreateBrandFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/create-brand.mjs
-    Properties:
-      Handler: brand/create-brand.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:PutItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        CreateBrand:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands
-            Method: POST
-
-  GetBrandFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/get-brand.mjs
-    Properties:
-      Handler: brand/get-brand.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:GetItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        GetBrand:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}
-            Method: GET
-
-  UpdateBrandFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/update-brand.mjs
-    Properties:
-      Handler: brand/update-brand.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        UpdateBrand:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}
-            Method: PUT
-
-  DeleteBrandFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/delete-brand.mjs
-    Properties:
-      Handler: brand/delete-brand.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        DeleteBrand:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}
-            Method: DELETE
-
-  ListBrandsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/list-brands.mjs
-    Properties:
-      Handler: brand/list-brands.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListBrands:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands
-            Method: GET
-
-  UploadAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/assets/upload-asset.mjs
-    Properties:
-      Handler: brand/assets/upload-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:PutItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action:
-                - s3:PutObject
-                - s3:PutObjectAcl
-              Resource: !Sub "${BrandAssetsBucket.Arn}/*"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          ASSETS_BUCKET: !Ref BrandAssetsBucket
-      Events:
-        UploadAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}/assets
-            Method: POST
-
-  ListAssetsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/assets/list-assets.mjs
-    Properties:
-      Handler: brand/assets/list-assets.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListAssets:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}/assets
-            Method: GET
-
-  DeleteAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - brand/assets/delete-asset.mjs
-    Properties:
-      Handler: brand/assets/delete-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action:
-                - s3:DeleteObject
-              Resource: !Sub "${BrandAssetsBucket.Arn}/*"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          ASSETS_BUCKET: !Ref BrandAssetsBucket
-      Events:
-        DeleteAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /brands/{brandId}/assets/{assetId}
-            Method: DELETE
-
-  CreateCampaignFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/create-campaign.mjs
-    Properties:
-      Handler: campaign/create-campaign.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: lambda:InvokeFunction
-              Resource: !Sub '${BuildCampaignFunction.Arn}:*'
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          BUILD_CAMPAIGN_FUNCTION_NAME: !Ref BuildCampaignFunction
-      Events:
-        CreateCampaign:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns
-            Method: POST
-
   BuildCampaignFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -933,165 +446,6 @@ Resources:
           ASSETS_BUCKET: !Ref AssetsBucket
           PRESIGNED_URL_EXPIRY_SECONDS: 900
           # MODEL_ID: us.amazon.nova-pro-v1:0
-
-
-
-
-
-
-
-  GetCampaignFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/get-campaign.mjs
-    Properties:
-      Handler: campaign/get-campaign.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:GetItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        GetCampaign:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns/{campaignId}
-            Method: GET
-
-  ListCampaignPostsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/list-posts.mjs
-    Properties:
-      Handler: campaign/list-posts.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListPosts:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns/{campaignId}/posts
-            Method: GET
-
-  UpdateCampaignFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/update-campaign.mjs
-    Properties:
-      Handler: campaign/update-campaign.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action: events:PutEvents
-              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        UpdateCampaign:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns/{campaignId}
-            Method: PUT
-
-  DeleteCampaignFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/delete-campaign.mjs
-    Properties:
-      Handler: campaign/delete-campaign.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        DeleteCampaign:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns/{campaignId}
-            Method: DELETE
-
-  ListCampaignsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - campaign/list-campaigns.mjs
-    Properties:
-      Handler: campaign/list-campaigns.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListCampaigns:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /campaigns
-            Method: GET
 
   UpdateCampaignStatusFunction:
     Type: AWS::Serverless::Function
@@ -1161,216 +515,13 @@ Resources:
             EventBusName: default
             Pattern:
               source: ["campaign-planner", "content-generator"]
-              detail-type: ["Campaign Planning Completed", "Campaign Planning Failed", "Content Generation Completed", "Content Generation Failed"]
-
-  CreateAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/create-asset.mjs
-    Properties:
-      Handler: assets/create-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:UpdateItem
-                - dynamodb:GetItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action:
-                - s3:PutObject
-                - s3:PutObjectAcl
-                - s3:GetObject
-              Resource: !Sub "${AssetsBucket.Arn}/*"
-            - Effect: Allow
-              Action:
-                - s3:GetBucketLocation
-              Resource: !GetAtt AssetsBucket.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          ASSETS_BUCKET: !Ref AssetsBucket
-          MAX_UPLOAD_SIZE_MB: 100
-          PRESIGNED_URL_EXPIRY_SECONDS: 900
-      Events:
-        CreateAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets
-            Method: POST
-
-  GetAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/get-asset.mjs
-    Properties:
-      Handler: assets/get-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:GetItem
-              Resource: !GetAtt PersonaTable.Arn
-            - Effect: Allow
-              Action:
-                - s3:GetObject
-              Resource: !Sub "${AssetsBucket.Arn}/*"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          ASSETS_BUCKET: !Ref AssetsBucket
-          PRESIGNED_URL_EXPIRY_SECONDS: 900
-          ENABLE_ACCESS_LOGGING: true
-      Events:
-        GetAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets/{assetId}
-            Method: GET
-
-  UpdateAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/update-asset.mjs
-    Properties:
-      Handler: assets/update-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        UpdateAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets/{assetId}
-            Method: PUT
-
-  DeleteAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/delete-asset.mjs
-    Properties:
-      Handler: assets/delete-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-                - dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-
-            - Effect: Allow
-              Action:
-                - s3:DeleteObject
-              Resource: !Sub "${AssetsBucket.Arn}/*"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-          ASSETS_BUCKET: !Ref AssetsBucket
-
-  ApproveAssetFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/approve-asset.mjs
-    Properties:
-      Handler: assets/approve-asset.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt PersonaTable.Arn
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ApproveAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets/{assetId}/approval
-            Method: PUT
-          ENABLE_CAMPAIGN_REFERENCE_CHECK: true
-      Events:
-        DeleteAsset:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets/{assetId}
-            Method: DELETE
-
-  ListAssetsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        <<: *esbuild-properties
-        EntryPoints:
-          - assets/list-assets.mjs
-    Properties:
-      Handler: assets/list-assets.handler
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Version: 2012-10-17
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource:
-                - !GetAtt PersonaTable.Arn
-                - !Sub "${PersonaTable.Arn}/index/GSI1"
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref PersonaTable
-      Events:
-        ListAssets:
-          Type: Api
-          Properties:
-            RestApiId: !Ref CampaignApi
-            Path: /assets
-            Method: GET
+              detail-type:
+                [
+                  "Campaign Planning Completed",
+                  "Campaign Planning Failed",
+                  "Content Generation Completed",
+                  "Content Generation Failed",
+                ]
 
   AssetUploadCompleteFunction:
     Type: AWS::Serverless::Function
@@ -1413,12 +564,10 @@ Resources:
                   name:
                     - !Ref AssetsBucket
 
-
-
 Outputs:
   PersonaApiUrl:
     Description: API Gateway endpoint URL for Persona Management API
-    Value: !Sub 'https://${CampaignApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Value: !Sub "https://${CampaignApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
 
   UserPoolId:
     Description: Cognito User Pool ID

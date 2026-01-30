@@ -11,7 +11,13 @@
     "lint:check": "eslint . --max-warnings 0",
     "sam:build": "sam build",
     "sam:deploy": "sam deploy --guided",
-    "sam:local": "sam local start-api"
+    "sam:local": "sam local start-api",
+    "test:rust": "cargo test --workspace",
+    "lint:rust": "cargo clippy --workspace --all-targets",
+    "lint:rust:fix": "cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged",
+    "fmt:rust": "cargo fmt --all -- --check",
+    "fmt:rust:fix": "cargo fmt --all",
+    "token": "node scripts/get-token.mjs"
   },
   "dependencies": {
     "@aws-lambda-powertools/logger": "^2.30.0",
